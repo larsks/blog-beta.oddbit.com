@@ -4,21 +4,21 @@
 		<title>Odd Bits</title>
 		<meta charset="utf-8" />
 		<link rel="profile" href="http://gmpg.org/xfn/11" />
-		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel="stylesheet" type="text/css" href="http://blog-beta.oddbit.com/theme/css/style.css" />
 		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
 		<style type="text/css">
 			body.custom-background { background-color: #f5f5f5; }
 		</style>
 		<link rel="alternate" type="application/atom+xml"
 			title="Odd Bits — Flux Atom"
-			href="http://localhost:8000/" /> 
-		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+			href="http://blog-beta.oddbit.com/" /> 
+		<!--[if lte IE 8]><script src="http://blog-beta.oddbit.com/theme/js/html5shiv.js"></script><![endif]-->
 </head>
 
 <body class="home blog custom-background " >
 	<div id="container">
 		<div id="header">
-				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+				<h1 id="site-title"><a href="http://blog-beta.oddbit.com">Odd Bits</a></h1>
 <h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
 		
 		<div id="menu">
@@ -39,46 +39,80 @@
 		<div id="contents">
 <div class="post type-post status-publish format-standard hentry category-general" id="post">
 	<div class="entry-meta">
-		<div class="date"><a href="http://localhost:8000/posts/2012/11/05/posting-to-scriptogram-using-the-api/">Mon 05 November 2012</a></div>
-		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+		<div class="date"><a href="http://blog-beta.oddbit.com/posts/2012/11/05/fedora-private-tmp/">Mon 05 November 2012</a></div>
+		<span class="byline">By <a href="http://blog-beta.oddbit.com/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
     		<span class="tag-links"><strong>Tagged</strong>
- <a href="http://localhost:8000/tag/api/index.html" rel="tag">api</a>,  <a href="http://localhost:8000/tag/scriptogram/index.html" rel="tag">scriptogr.am</a>    		</span>
+ <a href="http://blog-beta.oddbit.com/tag/fedora/index.html" rel="tag">fedora</a>,  <a href="http://blog-beta.oddbit.com/tag/systemd/index.html" rel="tag">systemd</a>    		</span>
 	</div> <!-- /#entry-meta -->
 	<div class="main">
 		<h2 class="entry-title">
-			<a href="http://localhost:8000/posts/2012/11/05/posting-to-scriptogram-using-the-api/" title="Permalink to Posting to Scriptogr.am using the API" rel="bookmark">Posting to Scriptogr.am using the API</a>
+			<a href="http://blog-beta.oddbit.com/posts/2012/11/05/fedora-private-tmp/" title="Permalink to Private /tmp directories in Fedora" rel="bookmark">Private /tmp directories in Fedora</a>
 		</h2>
 		<div class="entry-content">
-			<p>Scriptogr.am has a <a href="http://scriptogr.am/dashboard/#api_documentation">very simple api</a> that allows one to <code>POST</code> and
-<code>DELETE</code> articles.  <code>POST</code>ing an article will place it in the
-appropriate Dropbox directory and make it available on your blog all
-in one step.</p>
-<p>Here is how you could use this API via Curl:</p>
-<div class="highlight"><pre><span class="s-Atom">curl</span> <span class="s-Atom">\</span>
-       <span class="o">-</span><span class="s-Atom">d</span> <span class="s-Atom">app_key=</span><span class="err">$</span><span class="nv">APP_KEY</span> <span class="s-Atom">\</span>
-       <span class="o">-</span><span class="s-Atom">d</span> <span class="s-Atom">user_id=</span><span class="err">$</span><span class="nv">USER_ID</span> <span class="s-Atom">\</span>
-       <span class="o">-</span><span class="s-Atom">d</span> <span class="s-Atom">name=</span><span class="s2">&quot;${title:-$1}&quot;</span> <span class="s-Atom">\</span>
-       <span class="s-Atom">--data</span><span class="o">-</span><span class="s-Atom">urlencode</span> <span class="s-Atom">text@</span><span class="err">$</span><span class="s-Atom">tmpfile</span> <span class="s-Atom">\</span>
-       <span class="s-Atom">\</span>
-       <span class="nn">http</span><span class="p">:</span><span class="o">//</span><span class="s-Atom">scriptogr</span><span class="p">.</span><span class="s-Atom">am</span><span class="o">/</span><span class="s-Atom">api</span><span class="o">/</span><span class="s-Atom">article</span><span class="o">/</span><span class="s-Atom">post</span><span class="o">/</span>
+			<p>I ran into an odd problem the other day: I was testing out some
+configuration changes for a web application by dropping files into
+<code>/tmp</code> and pointing the application configuration at the appropriate
+directory.  Everything worked out great when testing it by hand...but
+when starting up the <code>httpd</code> service, the application behaved as if it
+was unable to find any of the files in <code>/tmp</code>.</p>
+<p>My first assumption was that had simply missed something obvious like
+file permissions or that I had a typo in my configuration, but after
+repeated checks and lots of testing it was obvious that something else
+was going on.</p>
+<p>Grasping at straws I took a close look at the <code>systemd</code> service file
+for <code>httpd</code>, which looks like this:</p>
+<div class="highlight"><pre><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">The Apache HTTP Server (prefork MPM)</span>
+<span class="na">After</span><span class="o">=</span><span class="s">syslog.target network.target remote-fs.target nss-lookup.target</span>
+
+<span class="k">[Service]</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">forking</span>
+<span class="na">PIDFile</span><span class="o">=</span><span class="s">/var/run/httpd/httpd.pid</span>
+<span class="na">EnvironmentFile</span><span class="o">=</span><span class="s">/etc/sysconfig/httpd</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/usr/sbin/httpd $OPTIONS -k start</span>
+<span class="na">ExecReload</span><span class="o">=</span><span class="s">/usr/sbin/httpd $OPTIONS -t</span>
+<span class="na">ExecReload</span><span class="o">=</span><span class="s">/bin/kill -HUP $MAINPID</span>
+<span class="na">ExecStop</span><span class="o">=</span><span class="s">/usr/sbin/httpd $OPTIONS -k stop</span>
+<span class="na">PrivateTmp</span><span class="o">=</span><span class="s">true</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
 </pre></div>
 
 
-<p>This assumes that you've registered for an application key and that
-you have configured the value into <code>$APP_KEY</code> and your Scriptogr.am
-user id into <code>$USER_ID</code>.</p>
-<p>The <code>name</code> attribute is both the title of your article <em>and also</em> the
-filename (normalized and with a <code>.md</code> extension).  Your article <em>must
-not</em> contain the metadata values that are allowed when you're editing
-files directly in the Dropbox directory.</p>
+<p>Browsing throught file the following line caught my eye:</p>
+<div class="highlight"><pre><span class="n">PrivateTmp</span><span class="o">=</span><span class="nb">true</span>
+</pre></div>
+
+
+<p>If you know about per-process namespaces in Linux, you're probably
+saying "Ah-ha!".  If you <em>don't</em> know about per-process namespaces in
+Linux...you should, because this is the foundation for all sorts of
+things including Linux Containers (<a href="http://lxc.sourceforge.net/">LXC</a>).  Here's some good
+introductory reading:</p>
+<ul>
+<li><a href="http://lxr.free-electrons.com/source/Documentation/unshare.txt">http://lxr.free-electrons.com/source/Documentation/unshare.txt</a></li>
+<li><a href="http://www.debian-administration.org/article/628/Per-Process_Namespaces">http://www.debian-administration.org/article/628/Per-Process_Namespaces</a></li>
+<li><a href="http://glandium.org/blog/?p=217">http://glandium.org/blog/?p=217</a></li>
+</ul>
+<p>In short, with this configuration in place, the service gets it's very
+own version of <code>/tmp</code> not shared with any other process.  While the
+files I placed in <code>/tmp</code> were visible in <em>my</em> process, they didn't
+exist from the point of view of Apache.</p>
+<p>The fix in my case was to place the files somewhere other than <code>/tmp</code>.
+One could also disable the <code>PrivateTmp</code> setting, but it's generally
+turned on for reasons of security.</p>
+<p>The <code>PrivateTmp</code> option is documented in <a href="https://docs.fedoraproject.org/en-US/Fedora/17/html/Release_Notes/sect-Release_Notes-Changes_for_Sysadmin.html">Changes in Fedora for System
+Administrators</a>, and Dan Walsh discusses it briefly on
+<a href="http://danwalsh.livejournal.com/51459.html">his blog</a>.</p>
 		</div> <!--/#entry-content-->
 	</div> <!--/#main-->
 </div>  <!--/#post--><div class="navigation">
 		<div class="nav-previous">
-				<a href="http://localhost:8000/index54.html">
+				<a href="http://blog-beta.oddbit.com/index54.html">
 			<span class="meta-nav">&larr;</span> Newer posts</a>
 		</div>		
-		<div class="nav-next"><a href="http://localhost:8000/index56.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+		<div class="nav-next"><a href="http://blog-beta.oddbit.com/index56.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
 </div>
 		</div>
 		

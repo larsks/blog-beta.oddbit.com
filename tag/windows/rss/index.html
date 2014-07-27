@@ -1,58 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/windows/rss/index.html" rel="self"></atom:link><lastBuildDate>Sun, 04 Nov 2012 00:00:00 -0400</lastBuildDate><item><title>Generating random passwords in PowerShell</title><link>http://localhost:8000/posts/2012/11/04/generating-random-passwords-in-powershell/</link><description>&lt;p&gt;I was looking for PowerShell solutions for generating a random password (in
-order to set the Administrator password on a Windows instance provisioned in
-&lt;a href="http://www.openstack.org/"&gt;OpenStack&lt;/a&gt;), and found several solutions using the GeneratePassword method
-of &lt;code&gt;System.Web.Security.Membership&lt;/code&gt; (documentation &lt;a href="http://msdn.microsoft.com/en-us/library/system.web.security.membership.generatepassword.aspx"&gt;here&lt;/a&gt;),
-along the lines of &lt;a href="https://gist.github.com/4011878"&gt;this&lt;/a&gt;:&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Function&lt;/span&gt; &lt;span class="n"&gt;New&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;RandomComplexPassword&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;length&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;8&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="p"&gt;{&lt;/span&gt;
-    &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;Assembly&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Add&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;Type&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;AssemblyName&lt;/span&gt; &lt;span class="n"&gt;System&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Web&lt;/span&gt;
-    &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;System&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Web&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Security&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Membership&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;GeneratePassword&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;length&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/pre&gt;&lt;/div&gt;
-
-
-&lt;p&gt;While this works, I was unhappy with the generated passwords: they
-were difficult to type or transcribe because they make heavy use of
-punctuation.  For example:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;(O;RK_wx(IcD;&amp;lt;V&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;+3N)lkU5r)nHiL#&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;These looks more like line noise (remember that?  No?  Get off my
-lawn...) than anything else and feel very unnatural to type.&lt;/p&gt;
-&lt;p&gt;I was looking for longer strings consisting primarily of letters and
-digits.  Thanks to Hey, Scripting Guy I learned about the Get-Random
-and ForEach-Object methods (and the % alias for the latter), and ended
-up with &lt;a href="https://gist.github.com/4011916"&gt;the following&lt;/a&gt;:&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nx"&gt;Generate&lt;/span&gt; &lt;span class="nx"&gt;a&lt;/span&gt; &lt;span class="nx"&gt;random&lt;/span&gt; &lt;span class="nx"&gt;password&lt;/span&gt;
-&lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nb"&gt;Usage&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;random&lt;/span&gt;&lt;span class="na"&gt;-password&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;length&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
-&lt;span class="nx"&gt;Function&lt;/span&gt; &lt;span class="nx"&gt;random&lt;/span&gt;&lt;span class="na"&gt;-password&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$length&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;15&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="p"&gt;{&lt;/span&gt;
-    &lt;span class="nv"&gt;$punc&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;46&lt;/span&gt;&lt;span class="nx"&gt;..46&lt;/span&gt;
-    &lt;span class="nv"&gt;$digits&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;48&lt;/span&gt;&lt;span class="nx"&gt;..57&lt;/span&gt;
-    &lt;span class="nv"&gt;$letters&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;65&lt;/span&gt;&lt;span class="nx"&gt;..90&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="mi"&gt;97&lt;/span&gt;&lt;span class="nx"&gt;..122&lt;/span&gt;
-
-    &lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nx"&gt;Thanks&lt;/span&gt; &lt;span class="k"&gt;to&lt;/span&gt;
-    &lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nx"&gt;https&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//blogs.technet.com/b/heyscriptingguy/archive/2012/01/07/use-pow&lt;/span&gt;
-    &lt;span class="nv"&gt;$password&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;get&lt;/span&gt;&lt;span class="na"&gt;-random&lt;/span&gt; &lt;span class="na"&gt;-count&lt;/span&gt; &lt;span class="nv"&gt;$length&lt;/span&gt; &lt;span class="sb"&gt;`&lt;/span&gt;
-&lt;span class="sb"&gt;        -input ($punc + $digits + $letters) |&lt;/span&gt;
-&lt;span class="sb"&gt;            % -begin { $aa = $null } `&lt;/span&gt;
-            &lt;span class="na"&gt;-process&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nv"&gt;$aa&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;char&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;$_} `
-            -end {$aa}
-
-    return $password
-}
-&lt;/pre&gt;&lt;/div&gt;
-
-
-&lt;p&gt;This generates strings of letters and digits (and ".") that look something like:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;2JQ0bW7VMqcm4UB&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;V4DObnQl0vJX1wC&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;I'm a lot happier with this.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 04 Nov 2012 00:00:00 -0400</pubDate><guid>tag:localhost:8000,2012-11-04:posts/2012/11/04/generating-random-passwords-in-powershell/</guid><category>powershell</category><category>windows</category><category>passwords</category></item><item><title>Automatic configuration of Windows instances in OpenStack, part 1</title><link>http://localhost:8000/posts/2012/11/04/openstack-windows-1/</link><description>&lt;p&gt;This is the first of two articles in which I discuss my work in
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://blog-beta.oddbit.com/</link><description>One of these things is not like the others</description><atom:link href="http://blog-beta.oddbit.com/tag/windows/rss/index.html" rel="self"></atom:link><lastBuildDate>Sun, 04 Nov 2012 00:00:00 -0400</lastBuildDate><item><title>Automatic configuration of Windows instances in OpenStack, part 1</title><link>http://blog-beta.oddbit.com/posts/2012/11/04/openstack-windows-1/</link><description>&lt;p&gt;This is the first of two articles in which I discuss my work in
 getting some Windows instances up and running in our &lt;a href="http://www.openstack.org/"&gt;OpenStack&lt;/a&gt;
 environment.  This article is primarily about problems I encountered
 along the way, while the &lt;a href="/post/openstack-windows-2"&gt;second article&lt;/a&gt; focuses on the mechanism I
@@ -191,7 +138,60 @@ empty.&lt;/p&gt;
 &lt;p&gt;Oops.  At this point it was obvious I was treading on ground best lest
 undisturbed.&lt;/p&gt;
 &lt;p&gt;This ends my tail of woe; tune in next...um, article...in which I
-discuss the solution we're using.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 04 Nov 2012 00:00:00 -0400</pubDate><guid>tag:localhost:8000,2012-11-04:posts/2012/11/04/openstack-windows-1/</guid><category>openstack</category><category>windows</category></item><item><title>Waiting for networking using PowerShell</title><link>http://localhost:8000/posts/2012/11/04/waiting-for-networking-using-powershell/</link><description>&lt;p&gt;I've recently been exploring the world of Windows scripting, and I ran
+discuss the solution we're using.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 04 Nov 2012 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2012-11-04:posts/2012/11/04/openstack-windows-1/</guid><category>openstack</category><category>windows</category></item><item><title>Generating random passwords in PowerShell</title><link>http://blog-beta.oddbit.com/posts/2012/11/04/powershell-random-passwords/</link><description>&lt;p&gt;I was looking for PowerShell solutions for generating a random password (in
+order to set the Administrator password on a Windows instance provisioned in
+&lt;a href="http://www.openstack.org/"&gt;OpenStack&lt;/a&gt;), and found several solutions using the GeneratePassword method
+of &lt;code&gt;System.Web.Security.Membership&lt;/code&gt; (documentation &lt;a href="http://msdn.microsoft.com/en-us/library/system.web.security.membership.generatepassword.aspx"&gt;here&lt;/a&gt;),
+along the lines of &lt;a href="https://gist.github.com/4011878"&gt;this&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Function&lt;/span&gt; &lt;span class="n"&gt;New&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;RandomComplexPassword&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;length&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;8&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;Assembly&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Add&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;Type&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;AssemblyName&lt;/span&gt; &lt;span class="n"&gt;System&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Web&lt;/span&gt;
+    &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;System&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Web&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Security&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Membership&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;GeneratePassword&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;length&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While this works, I was unhappy with the generated passwords: they
+were difficult to type or transcribe because they make heavy use of
+punctuation.  For example:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;(O;RK_wx(IcD;&amp;lt;V&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;+3N)lkU5r)nHiL#&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These looks more like line noise (remember that?  No?  Get off my
+lawn...) than anything else and feel very unnatural to type.&lt;/p&gt;
+&lt;p&gt;I was looking for longer strings consisting primarily of letters and
+digits.  Thanks to Hey, Scripting Guy I learned about the Get-Random
+and ForEach-Object methods (and the % alias for the latter), and ended
+up with &lt;a href="https://gist.github.com/4011916"&gt;the following&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nx"&gt;Generate&lt;/span&gt; &lt;span class="nx"&gt;a&lt;/span&gt; &lt;span class="nx"&gt;random&lt;/span&gt; &lt;span class="nx"&gt;password&lt;/span&gt;
+&lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nb"&gt;Usage&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;random&lt;/span&gt;&lt;span class="na"&gt;-password&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;length&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;span class="nx"&gt;Function&lt;/span&gt; &lt;span class="nx"&gt;random&lt;/span&gt;&lt;span class="na"&gt;-password&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$length&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;15&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="nv"&gt;$punc&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;46&lt;/span&gt;&lt;span class="nx"&gt;..46&lt;/span&gt;
+    &lt;span class="nv"&gt;$digits&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;48&lt;/span&gt;&lt;span class="nx"&gt;..57&lt;/span&gt;
+    &lt;span class="nv"&gt;$letters&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;65&lt;/span&gt;&lt;span class="nx"&gt;..90&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="mi"&gt;97&lt;/span&gt;&lt;span class="nx"&gt;..122&lt;/span&gt;
+
+    &lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nx"&gt;Thanks&lt;/span&gt; &lt;span class="k"&gt;to&lt;/span&gt;
+    &lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="nx"&gt;https&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//blogs.technet.com/b/heyscriptingguy/archive/2012/01/07/use-pow&lt;/span&gt;
+    &lt;span class="nv"&gt;$password&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;get&lt;/span&gt;&lt;span class="na"&gt;-random&lt;/span&gt; &lt;span class="na"&gt;-count&lt;/span&gt; &lt;span class="nv"&gt;$length&lt;/span&gt; &lt;span class="sb"&gt;`&lt;/span&gt;
+&lt;span class="sb"&gt;        -input ($punc + $digits + $letters) |&lt;/span&gt;
+&lt;span class="sb"&gt;            % -begin { $aa = $null } `&lt;/span&gt;
+            &lt;span class="na"&gt;-process&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nv"&gt;$aa&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;char&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;$_} `
+            -end {$aa}
+
+    return $password
+}
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This generates strings of letters and digits (and ".") that look something like:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;2JQ0bW7VMqcm4UB&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;V4DObnQl0vJX1wC&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;I'm a lot happier with this.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 04 Nov 2012 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2012-11-04:posts/2012/11/04/powershell-random-passwords/</guid><category>powershell</category><category>windows</category><category>passwords</category></item><item><title>Waiting for networking using PowerShell</title><link>http://blog-beta.oddbit.com/posts/2012/11/04/powershell-wait-for-networking/</link><description>&lt;p&gt;I've recently been exploring the world of Windows scripting, and I ran
 into a small problem: I was running a script at system startup, and
 the script was running before the network interface (which was using
 DHCP) was configured.&lt;/p&gt;
@@ -250,4 +250,4 @@ function wait-for-network ($tries) {
 interfaces that have a default gateway (the &lt;code&gt;DefaultIPGateway&lt;/code&gt;
 attribute).  It will poll the state of things once/second up to &lt;code&gt;$tries&lt;/code&gt;
 times, and if nothing is available it will ultimately throw an
-exception.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 04 Nov 2012 00:00:00 -0400</pubDate><guid>tag:localhost:8000,2012-11-04:posts/2012/11/04/waiting-for-networking-using-powershell/</guid><category>powershell</category><category>networking</category><category>windows</category></item></channel></rss>
+exception.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 04 Nov 2012 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2012-11-04:posts/2012/11/04/powershell-wait-for-networking/</guid><category>powershell</category><category>networking</category><category>windows</category></item></channel></rss>

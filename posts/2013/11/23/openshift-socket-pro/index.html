@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Sockets on OpenShift</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://blog-beta.oddbit.com/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://blog-beta.oddbit.com/" /> 
+		<!--[if lte IE 8]><script src="http://blog-beta.oddbit.com/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://blog-beta.oddbit.com">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://blog-beta.oddbit.com/posts/2013/11/23/openshift-socket-pro/">Sat 23 November 2013</a></div>
+		<span class="byline">By <a href="http://blog-beta.oddbit.com/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://blog-beta.oddbit.com/tag/javascript/index.html" rel="tag">javascript</a>,  <a href="http://blog-beta.oddbit.com/tag/openshift/index.html" rel="tag">openshift</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://blog-beta.oddbit.com/posts/2013/11/23/openshift-socket-pro/" title="Permalink to Sockets on OpenShift" rel="bookmark">Sockets on OpenShift</a>
+		</h2>
+		<div class="entry-content">
+			<p>In this article, a followup to my [previous post][] regarding
+long-poll servers and Python, we investigate the code changes that
+were necessary to make the code work when deployed on OpenShift.</p>
+<!-- more -->
+
+<p>In the previous post, we implemented IO polling to watch for client
+disconnects at the same time we were waiting for messages on a message
+bus:</p>
+<div class="highlight"><pre><span class="n">poll</span> <span class="o">=</span> <span class="n">zmq</span><span class="p">.</span><span class="n">Poller</span><span class="p">()</span>
+<span class="n">poll</span><span class="p">.</span><span class="k">register</span><span class="p">(</span><span class="n">subsock</span><span class="p">,</span> <span class="n">zmq</span><span class="p">.</span><span class="n">POLLIN</span><span class="p">)</span>
+<span class="n">poll</span><span class="p">.</span><span class="k">register</span><span class="p">(</span><span class="n">rfile</span><span class="p">,</span> <span class="n">zmq</span><span class="p">.</span><span class="n">POLLIN</span><span class="p">)</span>
+
+<span class="n">events</span> <span class="o">=</span> <span class="n">dict</span><span class="p">(</span><span class="n">poll</span><span class="p">.</span><span class="n">poll</span><span class="p">())</span>
+
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+</pre></div>
+
+
+<p>If you were to try this at home, you would find that everything worked
+as described...but if you were to deploy the same code to OpenShift,
+you would find that the problem we were trying to solve (the server
+holding file descriptors open after a client disconnected) would still
+exist.</p>
+<p>So, what's going on here?  I spent a chunk of time trying to figure
+this out myself.  I finally found <a href="https://www.openshift.com/blogs/paas-websockets">this post</a> by
+Marak Jelen discussing issues with <a href="http://en.wikipedia.org/wiki/WebSocket">websockets</a> in OpenShift, which
+says, among other things:</p>
+<blockquote>
+<p>For OpenShift as a PaaS provider, WebSockets were a big challenge.
+The routing layer that sits between the user's browser and your
+application must be able to route and handle WebSockets. OpenShift
+uses Apache as a reverse proxy server and a main component to route
+requests throughout the platform. However, Apache's mod_proxy has
+been problematic with WebSockets, so OpenShift implemented a new
+Node.js based routing layer that provides scalability and the
+possibility to expand features provided to our users.</p>
+</blockquote>
+<p>In order to work around these problems, an alternate <a href="http://nodejs.org/">Node.js</a> based
+front-end has been deployed on port 8000.  So if your application is
+normally available at <code>http://myapplication-myname.rhcloud.com</code>, you
+can also access it at <code>http://myapplication-myname.rhcloud.com:8000</code>.</p>
+<p>Not unexpectedly, it seems that the same things that can cause
+difficulties with WebSockets connections can also interfere with the
+operation of a long-poll server.  The root of the problem is that your
+service running on OpenShift never receives notifications of client
+disconnects.  You can see this by opening up a connection to your
+service.  Assuming that you've deployed the <a href="https://github.com/larsks/pubsub_example/">pubsub example</a>, you
+can run something like this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">curl</span> <span class="n">http</span><span class="o">:</span><span class="c1">//myapplication-myname.rhcloud.com/sub</span>
+</pre></div>
+
+
+<p>Leave the connection open and <a href="https://www.openshift.com/developers/remote-access">log in to your OpenShift
+instance</a>.  Run <code>netstat</code> to see the existing connection:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">netstat</span> <span class="o">-</span><span class="n">tan</span> <span class="o">|</span>
+  <span class="n">grep</span> <span class="err">$</span><span class="n">OPENSHIFT_PYTHON_IP</span> <span class="o">|</span>
+  <span class="n">grep</span> <span class="err">$</span><span class="n">OPENSHIFT_PYTHON_PORT</span> <span class="o">|</span>
+  <span class="n">grep</span> <span class="n">ESTABLISHED</span>
+<span class="n">tcp</span>        <span class="mi">0</span>      <span class="mi">0</span> <span class="mf">127.6.26.1</span><span class="o">:</span><span class="mi">15368</span>            <span class="mf">127.6.26.1</span><span class="o">:</span><span class="mi">8080</span>             <span class="n">ESTABLISHED</span> 
+<span class="n">tcp</span>        <span class="mi">0</span>      <span class="mi">0</span> <span class="mf">127.6.26.1</span><span class="o">:</span><span class="mi">8080</span>             <span class="mf">127.6.26.1</span><span class="o">:</span><span class="mi">15368</span>            <span class="n">ESTABLISHED</span>
+</pre></div>
+
+
+<p>Now close your client, and re-run the <code>netstat</code> command on your
+OpenShift instance.  You will find that the client connection  from
+the front-end proxies to your server is still active.  Because the
+server never receives any notification that the client has closed the
+connection, no amount of <code>select</code> or <code>poll</code> or anything else will
+solve this problem.</p>
+<p>Now, try the same experiment using port 8000.  That is, run:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">curl</span> <span class="n">http</span><span class="o">:</span><span class="c1">//myapplication-myname.rhcloud.com:8000/sub</span>
+</pre></div>
+
+
+<p>Verify that when you close your client, the connection is long evident
+in your server.  This means that we need to modify our JavaScript code
+to poll using port 8000, which is why in <a href="https://github.com/larsks/pubsub_example/blob/master/static/pubsub.js">pubsub.js</a> you will find
+the following:</p>
+<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="n">using_openshift</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">poll_url</span> <span class="o">=</span> <span class="n">location</span><span class="p">.</span><span class="n">protocol</span> <span class="o">+</span> <span class="s">&quot;//&quot;</span> <span class="o">+</span> <span class="n">location</span><span class="p">.</span><span class="n">hostname</span> <span class="o">+</span> <span class="s">&quot;:8000/sub&quot;</span><span class="p">;</span>
+<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="n">poll_url</span> <span class="o">=</span> <span class="s">&quot;/sub&quot;</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<h2>But wait, there's more!</h2>
+<p>If you were to deploy the above code with no other changes, you would
+find a mysterious problem: even though your JavaScript console would
+show that your code was successfully polling the server, your client
+would never update.  This is because by introducing an alternate port
+number to the poll operation you are now running afoul of your
+brower's <a href="http://en.wikipedia.org/wiki/Same-origin_policy">same origin policy</a>, a security policy that restricts
+JavaScript in your browser from interacting with sites other than the
+one from which the script was loaded.</p>
+<p>The <a href="http://en.wikipedia.org/wiki/Cross-origin_resource_sharing">CORS</a> standard introduces a mechanism to work around this
+restriction.  An HTTP response can contain additional access control
+headers that instruct your browser to permit access to the resource from
+a select set of other origins.  The header is called
+<code>Access-Control-Alliow-Origin</code>, and you will find it in the <a href="https://github.com/larsks/pubsub_example/">pubsub
+example</a> in <a href="https://github.com/larsks/pubsub_example/blob/master/pubsub.py">pubsub.py</a>:</p>
+<div class="highlight"><pre>    <span class="k">if</span> <span class="n">using_openshift</span><span class="o">:</span>
+        <span class="n">bottle</span><span class="p">.</span><span class="n">response</span><span class="p">.</span><span class="n">headers</span><span class="p">[</span><span class="err">&#39;</span><span class="n">Access</span><span class="o">-</span><span class="n">Control</span><span class="o">-</span><span class="n">Allow</span><span class="o">-</span><span class="n">Origin</span><span class="err">&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="sc">&#39;*&#39;</span>
+</pre></div>
+
+
+<p>With this header in place, your JavaScript can poll your
+OpenShift-hosted application on port 8000 and everything will work as
+expected...</p>
+<p>...barring bugs in my code, which, if discovered, should be reported
+<a href="https://github.com/larsks/pubsub_example/issues">here</a>.</p>
+<p>[previous post]: {% post_url 2013-11-23-long-polling-with-ja %}</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>
