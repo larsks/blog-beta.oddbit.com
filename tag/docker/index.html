@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged docker</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>docker</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2014/07/21/tracking-down-a-kernel-bug-with-git-bisect/">Mon 21 July 2014</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/docker/index.html" rel="tag">docker</a>,  <a href="http://localhost:8000/tag/git/index.html" rel="tag">git</a>,  <a href="http://localhost:8000/tag/kernel/index.html" rel="tag">kernel</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2014/07/21/tracking-down-a-kernel-bug-with-git-bisect/" title="Permalink to Tracking down a kernel bug with git bisect" rel="bookmark">Tracking down a kernel bug with git bisect</a>
+		</h2>
+		<div class="entry-content">
+			<p>After a recent upgrade of my Fedora 20 system to kernel 3.15.mumble, I
+started running into a problem (<a href="https://bugzilla.redhat.com/show_bug.cgi?id=1121345">BZ 1121345</a>) with my <a href="https://www.docker.com/">Docker</a>
+containers.  Operations such as <code>su</code> or <code>runuser</code> would fail with the
+singularly unhelpful <code>System error</code> message:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">docker</span> <span class="n">run</span> <span class="o">-</span><span class="n">ti</span> <span class="n">fedora</span> <span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">bash</span>
+<span class="n">bash</span><span class="o">-</span><span class="mf">4.2</span><span class="err">#</span> <span class="n">su</span> <span class="o">-</span><span class="n">c</span> <span class="err">&#39;</span><span class="n">uptime</span><span class="err">&#39;</span>
+<span class="nl">su:</span> <span class="n">System</span> <span class="n">error</span>
+</pre></div>
+
+
+<p>Hooking up something (like, say, <code>socat unix-listen:/dev/log -</code>) to
+<code>/dev/log</code> revealed that the system was logging:</p>
+<div class="highlight"><pre><span class="n">Jul</span> <span class="mi">19</span> <span class="mi">14</span><span class="o">:</span><span class="mi">31</span><span class="o">:</span><span class="mi">18</span> <span class="n">su</span><span class="o">:</span> <span class="n">PAM</span> <span class="n">audit_log_acct_message</span><span class="p">()</span> <span class="n">failed</span><span class="o">:</span> <span class="n">Operation</span> <span class="n">not</span> <span class="n">permitted</span>
+</pre></div>
+
+
+<p>Downgrading the kernel to 3.14 immediately resolved the problem,
+suggesting that this was at least partly a kernel issue.  This seemed
+like a great opportunity to play with the <a href="http://git-scm.com/docs/git-bisect">git bisect</a> command,
+which uses a binary search to find which commit introduced a
+particular problem.</p>
+<p>Unfortunately, between the version I knew to work correctly (3.14) and
+the version I knew to have a problem (3.15) there were close to 15,000
+commits, which seemed like a large space to search by hand.</p>
+<p>Fortunately, <code>git bisect</code> can be easily automated via <code>git bisect run</code>
+subcommand, which after checking out a commit will run a script to
+determine if the current commit is "good" or "bad".  So all I have to
+do is write a script...that's not so bad!</p>
+<p><img src="/assets/ha-ha.jpg" width="300"/></p>
+<p>It actually ended up being somewhat tricky.</p>
+<h2>Testing kernels is hard</h2>
+<p>In order to test for this problem, I would need to use arbitrary
+kernels generated during the <code>git bisect</code> operation to boot a system
+functional enough to run docker, and then run docker and somehow
+communicate the result of that test back to the build environment.</p>
+<p>I started with the <a href="http://fedoraproject.org/get-fedora#clouds">Fedora 20 cloud image</a>, which is nice and
+small but still the same platform as my laptop on which I was
+experiencing the problem.  I would need to correct a few things before
+moving forward:</p>
+<p>The Fedora cloud images (a) do not support password authentication and
+(b) expect a datasource to be available to <a href="http://cloudinit.readthedocs.org/en/latest/">cloud-init</a> (without
+which you get errors on the console and potentially a delay waiting
+for the <code>login:</code> prompt), so prior to using the image in this test I
+made some changes by mounting it locally:</p>
+<div class="highlight"><pre><span class="c"># modprobe nbd max_part=8</span>
+<span class="c"># qemu-nbd -c /dev/nbd0 Fedora-x86_64-20-20140407-sda.qcow2</span>
+<span class="c"># mount /dev/nbd0p1 /mnt</span>
+<span class="c"># systemd-nspawn -D /mnt</span>
+</pre></div>
+
+
+<p>And then:</p>
+<ul>
+<li>I set a password for the <code>root</code> account and</li>
+<li>I removed the <code>cloud-init</code> package.</li>
+</ul>
+<p>For this test I would be using the <code>qemu-system-x86_64</code> command
+directly, rather than working through <code>libvirt</code> (<code>qemu</code> has options
+for convenient debugging with <code>gdb</code>, and is also able to access the
+filesystem as the calling <code>uid</code> whereas <code>libvirt</code> is typically running
+as another user).</p>
+<p>I would need to perform an initial <code>docker pull</code> in the image, which
+meant I was going to need a functioning network, so first I had to set
+up a network environment for qemu.</p>
+<h3>Network configuration</h3>
+<p>I created a bridge interface named <code>qemu0</code> to be used by <code>qemu</code>.  I added
+to <code>/etc/sysconfig/network-scripts/ifcfg-qemu0</code> the following:</p>
+<div class="highlight"><pre><span class="n">DEVICE</span><span class="o">=</span><span class="n">qemu0</span>
+<span class="n">TYPE</span><span class="o">=</span><span class="n">Bridge</span>
+<span class="n">ONBOOT</span><span class="o">=</span><span class="n">yes</span>
+<span class="n">BOOTPROTO</span><span class="o">=</span><span class="n">none</span>
+<span class="n">STP</span><span class="o">=</span><span class="n">no</span>
+<span class="n">NAME</span><span class="o">=</span><span class="s">&quot;Bridge qemu0&quot;</span>
+<span class="n">IPADDR</span><span class="o">=</span><span class="mf">192.168.210.1</span>
+<span class="n">NETMASK</span><span class="o">=</span><span class="mf">255.255.255.0</span>
+</pre></div>
+
+
+<p>This is largely equivalent to the following, but persists after reboot:</p>
+<div class="highlight"><pre><span class="n">brctl</span> <span class="n">addbr</span> <span class="n">qemu0</span>
+<span class="n">ip</span> <span class="n">addr</span> <span class="n">add</span> <span class="mf">192.168.210.1</span><span class="o">/</span><span class="mi">24</span> <span class="n">dev</span> <span class="n">qemu0</span>
+<span class="n">ip</span> <span class="n">link</span> <span class="n">set</span> <span class="n">qemu0</span> <span class="n">up</span>
+</pre></div>
+
+
+<p>I created a <a href="https://www.kernel.org/doc/Documentation/networking/tuntap.txt">tap</a> interface named <code>linux0</code>:</p>
+<div class="highlight"><pre><span class="n">ip</span> <span class="n">tuntap</span> <span class="n">add</span> <span class="n">dev</span> <span class="n">linux0</span> <span class="n">mode</span> <span class="n">tap</span> <span class="n">user</span> <span class="n">lars</span>
+</pre></div>
+
+
+<p>And added it to the bridge:</p>
+<div class="highlight"><pre><span class="n">brctl</span> <span class="n">addif</span> <span class="n">qemu0</span> <span class="n">linux0</span>
+</pre></div>
+
+
+<p>I also started up <code>dnsmasq</code> process listening on <code>qemu0</code> to provide
+DNS lookup and DHCP service to qemu instances attached to this bridge.
+The <code>dnsmasq</code> configuration looked like this:</p>
+<div class="highlight"><pre><span class="n">listen</span><span class="o">-</span><span class="n">address</span><span class="o">=</span><span class="mf">192.168.210.1</span>
+<span class="n">bind</span><span class="o">-</span><span class="n">interfaces</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="n">range</span><span class="o">=</span><span class="mf">192.168.210.10</span><span class="p">,</span><span class="mf">192.168.210.254</span>
+</pre></div>
+
+
+<h3>Running qemu</h3>
+<p>With the network environment set up, I needed to figure out an
+appropriate qemu command line.  This is what I finally ended up with,
+in a script called <code>boot-kernel</code>:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+qemu-system-x86_64 -m 1024M <span class="se">\</span>
+  -drive <span class="nv">file</span><span class="o">=</span>fedora.img,if<span class="o">=</span>virtio <span class="se">\</span>
+  -append <span class="s2">&quot;console=hvc0 root=/dev/vda1 selinux=0 $BOOT_ARGS&quot;</span> <span class="se">\</span>
+  -initrd initrd.img <span class="se">\</span>
+  -kernel arch/x86_64/boot/bzImage <span class="se">\</span>
+  -machine <span class="nv">accel</span><span class="o">=</span>kvm <span class="se">\</span>
+  -netdev tap,id<span class="o">=</span>net0,ifname<span class="o">=</span>linux0,script<span class="o">=</span>no,downscript<span class="o">=</span>no <span class="se">\</span>
+  -device virtio-net,netdev<span class="o">=</span>net0,mac<span class="o">=</span>52:54:00:c0:ff:ee <span class="se">\</span>
+  -chardev stdio,id<span class="o">=</span>stdio,mux<span class="o">=</span>on <span class="se">\</span>
+  -device virtio-serial-pci <span class="se">\</span>
+  -device virtconsole,chardev<span class="o">=</span>stdio <span class="se">\</span>
+  -mon <span class="nv">chardev</span><span class="o">=</span>stdio <span class="se">\</span>
+  -fsdev <span class="nb">local</span>,id<span class="o">=</span>fs0,path<span class="o">=</span><span class="nv">$PWD</span>,security_model<span class="o">=</span>none <span class="se">\</span>
+  -device virtio-9p-pci,fsdev<span class="o">=</span>fs0,mount_tag<span class="o">=</span>kernel_src <span class="se">\</span>
+  -display none <span class="se">\</span>
+  <span class="nv">$QEMU_ARGS</span>
+</pre></div>
+</td></tr></table>
+
+<p>These lines set up the networking:</p>
+<div class="highlight"><pre>  <span class="o">-</span><span class="n">netdev</span> <span class="n">tap</span><span class="p">,</span><span class="n">id</span><span class="o">=</span><span class="n">net0</span><span class="p">,</span><span class="n">ifname</span><span class="o">=</span><span class="n">linux0</span><span class="p">,</span><span class="n">script</span><span class="o">=</span><span class="n">no</span><span class="p">,</span><span class="n">downscript</span><span class="o">=</span><span class="n">no</span> \
+  <span class="o">-</span><span class="n">device</span> <span class="n">virtio</span><span class="o">-</span><span class="n">net</span><span class="p">,</span><span class="n">netdev</span><span class="o">=</span><span class="n">net0</span><span class="p">,</span><span class="n">mac</span><span class="o">=</span><span class="mi">52</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="n">c0</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ee</span> \
+</pre></div>
+
+
+<p>These lines set up console on <code>stdin</code>/<code>stdout</code> and multiplex the
+console with the qemu monitor:</p>
+<div class="highlight"><pre>  <span class="o">-</span><span class="n">chardev</span> <span class="n">stdio</span><span class="p">,</span><span class="n">id</span><span class="o">=</span><span class="n">stdio</span><span class="p">,</span><span class="n">mux</span><span class="o">=</span><span class="n">on</span> \
+  <span class="o">-</span><span class="n">device</span> <span class="n">virtio</span><span class="o">-</span><span class="n">serial</span><span class="o">-</span><span class="n">pci</span> \
+  <span class="o">-</span><span class="n">device</span> <span class="n">virtconsole</span><span class="p">,</span><span class="n">chardev</span><span class="o">=</span><span class="n">stdio</span> \
+  <span class="o">-</span><span class="n">mon</span> <span class="n">chardev</span><span class="o">=</span><span class="n">stdio</span> \
+</pre></div>
+
+
+<p>These lines set up access to the current working directory as a <code>9p</code>
+filesystem:</p>
+<div class="highlight"><pre>  <span class="o">-</span><span class="n">fsdev</span> <span class="n">local</span><span class="p">,</span><span class="n">id</span><span class="o">=</span><span class="n">fs0</span><span class="p">,</span><span class="n">path</span><span class="o">=</span><span class="err">$</span><span class="n">PWD</span><span class="p">,</span><span class="n">security_model</span><span class="o">=</span><span class="n">none</span> \
+  <span class="o">-</span><span class="n">device</span> <span class="n">virtio</span><span class="o">-</span><span class="mi">9</span><span class="n">p</span><span class="o">-</span><span class="n">pci</span><span class="p">,</span><span class="n">fsdev</span><span class="o">=</span><span class="n">fs0</span><span class="p">,</span><span class="n">mount_tag</span><span class="o">=</span><span class="n">kernel_src</span> \
+</pre></div>
+
+
+<p>Within the qemu instance, this lets me access my working directory with:</p>
+<div class="highlight"><pre><span class="n">mount</span> <span class="o">-</span><span class="n">t</span> <span class="mi">9</span><span class="n">p</span> <span class="n">kernel_src</span> <span class="o">/</span><span class="n">mnt</span>
+</pre></div>
+
+
+<p>The <code>$BOOT_ARGS</code> and <code>$QEMU_ARGS</code> in the script allow me to modify the
+behavior of the script by setting environment variables when calling
+it, like this:</p>
+<div class="highlight"><pre><span class="n">QEMU_ARGS</span><span class="o">=</span><span class="s">&quot;-s&quot;</span> <span class="n">sh</span> <span class="n">boot</span><span class="o">-</span><span class="n">kernel</span>
+</pre></div>
+
+
+<h3>First boot</h3>
+<p>I tried to boot the image using my existing kernel and initrd from
+<code>/boot</code>, and ran into a problem:</p>
+<div class="highlight"><pre><span class="p">[</span>  <span class="mf">184.060756</span><span class="p">]</span> <span class="n">dracut</span><span class="o">-</span><span class="n">initqueue</span><span class="p">[</span><span class="mi">218</span><span class="p">]</span><span class="o">:</span> <span class="n">Warning</span><span class="o">:</span> <span class="n">Could</span> <span class="n">not</span> <span class="n">boot</span><span class="p">.</span>
+<span class="p">[</span>  <span class="mf">184.062855</span><span class="p">]</span> <span class="n">dracut</span><span class="o">-</span><span class="n">initqueue</span><span class="p">[</span><span class="mi">218</span><span class="p">]</span><span class="o">:</span> <span class="n">Warning</span><span class="o">:</span> <span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">ssd</span><span class="o">/</span><span class="n">root</span> <span class="n">does</span> <span class="n">not</span> <span class="n">exist</span>
+         <span class="n">Starting</span> <span class="n">Dracut</span> <span class="n">Emergency</span> <span class="n">Shell</span><span class="p">...</span>
+<span class="nl">Warning:</span> <span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">ssd</span><span class="o">/</span><span class="n">root</span> <span class="n">does</span> <span class="n">not</span> <span class="n">exist</span>
+
+<span class="n">Generating</span> <span class="s">&quot;/run/initramfs/rdsosreport.txt&quot;</span>
+
+<span class="n">Entering</span> <span class="n">emergency</span> <span class="n">mode</span><span class="p">.</span> <span class="n">Exit</span> <span class="n">the</span> <span class="n">shell</span> <span class="n">to</span> <span class="k">continue</span><span class="p">.</span>
+</pre></div>
+
+
+<p>The what now?  <code>/dev/ssd/root</code> is the root device for my host system,
+but wasn't anywhere in the kernel command line I used when booting
+qemu.  It turns out that this was embedded in the initrd image in
+<code>/etc/cmdline.d/90lvm.conf</code>.  After removing that file from the
+image...</p>
+<div class="highlight"><pre><span class="c"># mkdir initrd</span>
+<span class="c"># cd initrd</span>
+<span class="c"># zcat /boot/initramfs-3.15.6-200.fc20.x86_64.img | cpio -id</span>
+<span class="c"># rm -rf etc/cmdline.d</span>
+<span class="c"># find . -print | cpio -o -Hcrc | gzip &gt; ../initrd.img</span>
+</pre></div>
+
+
+<p>...I was able to boot successfully and log in.</p>
+<h3>I bet you thought we were done!</h3>
+<p>Modern systems are heavily modular.  Without access to a module tree
+matching the kernel, I would be unable to successfully boot the
+system, let alone use Docker.  Looking at which modules were loaded
+when I ran <code>docker</code> with the above image, I set up a custom kernel
+configuration that would permit me to boot and run docker without
+requiring any loadable modules.  This would allow me to use the same
+image for each kernel without needing to re-populate it with modules
+each time I built a kernel.</p>
+<p>The kernel configuration I ended up with is available <a href="/assets/2014/07/21/kernel-config.txt">here</a>.</p>
+<h3>Testing docker</h3>
+<p>The last step in this process is putting together something that tests
+<code>docker</code> and exposes the result of that test to the build environment.
+I added the following script to the image as <code>/root/docker-test</code>:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+grep NO_DOCKER_TEST /proc/cmdline <span class="o">&amp;&amp;</span> <span class="nb">exit </span>0
+
+<span class="k">if</span> <span class="o">[</span> -d /mnt/test_result <span class="o">]</span>; <span class="k">then</span>
+docker run --rm -i fedora sh -c <span class="s1">&#39;su -c true &amp;&amp; echo OKAY || echo FAILED&#39;</span> <span class="se">\</span>
+  &gt; /mnt/test_result/stdout <span class="se">\</span>
+  2&gt; /mnt/test_result/stderr
+poweroff
+<span class="k">fi</span>
+</pre></div>
+</td></tr></table>
+
+<p>This relies on the following entry in <code>/etc/fstab</code>:</p>
+<div class="highlight"><pre><span class="n">kernel_src</span> <span class="o">/</span><span class="n">mnt</span> <span class="mi">9</span><span class="n">p</span> <span class="n">defaults</span> <span class="mi">0</span> <span class="mi">0</span>
+</pre></div>
+
+
+<p>That mounts the build directory as a <code>9p</code> filesystem on <code>/mnt</code>.  This
+allows us to write out test results to, e.g.,
+<code>/mnt/test_result/stdout</code> and have that appear in the <code>test_result</code>
+directory inside the kernel source.</p>
+<p>This script is run at the end of the boot process via an entry in
+<code>/etc/rc.d/rc.local</code>:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+sh /root/docker-test
+</pre></div>
+</td></tr></table>
+
+<p>Running the <code>boot-kernel</code> script without additional configuration will
+cause the image to boot up, run the docker test, and then exit.</p>
+<h2>Running git-bisect</h2>
+<p>At this point we have just about everything we need to start running
+<code>git bisect</code>.  For the initial run, I'm going to use git tag <code>v3.14</code>
+as the "known good" commit and <code>v3.15</code> as the "known bad" commit, so
+we start <code>git bisect</code> like this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">bisect</span> <span class="n">start</span> <span class="n">v3</span><span class="mf">.15</span> <span class="n">v3</span><span class="mf">.14</span>
+</pre></div>
+
+
+<p>Then we run <code>git bisect run sh bisect-test</code>, where <code>bisect-test</code> is
+the following shell script:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+<span class="c"># Rebuild the kernel</span>
+make olddefconfig
+make -j8
+
+<span class="c"># Clear out old test results and run the test</span>
+rm -f test_result/<span class="o">{</span>stdout,stderr<span class="o">}</span>
+sh boot-kernel
+
+<span class="c"># Report results to git-bisect</span>
+<span class="k">if </span>grep OKAY test_result/stdout; <span class="k">then</span>
+<span class="k">  </span><span class="nb">exit </span>0
+<span class="k">else</span>
+<span class="k">  </span><span class="nb">exit </span>1
+<span class="k">fi</span>
+</pre></div>
+</td></tr></table>
+
+<p>...and then we go out for a cup of coffee or something, because that's
+going to take a while.</p>
+<h2>Keep digging, Watson</h2>
+<p>The initial run of <code>git bisect</code> narrowed the change down to the
+<a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=b7d3622">following commit</a>:</p>
+<div class="highlight"><pre><span class="n">commit</span> <span class="n">b7d3622a39fde7658170b7f3cf6c6889bb8db30d</span>
+<span class="nl">Merge:</span> <span class="n">f3411cb</span> <span class="n">d8ec26d</span>
+<span class="nl">Author:</span> <span class="n">Eric</span> <span class="n">Paris</span> <span class="o">&lt;</span><span class="n">eparis</span><span class="err">@</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">&gt;</span>
+<span class="nl">Date:</span>   <span class="n">Fri</span> <span class="n">Mar</span> <span class="mi">7</span> <span class="mi">11</span><span class="o">:</span><span class="mi">41</span><span class="o">:</span><span class="mi">32</span> <span class="mi">2014</span> <span class="o">-</span><span class="mo">0500</span>
+
+    <span class="n">Merge</span> <span class="n">tag</span> <span class="err">&#39;</span><span class="n">v3</span><span class="mf">.13</span><span class="err">&#39;</span> <span class="n">into</span> <span class="k">for</span><span class="o">-</span><span class="mf">3.15</span>
+
+    <span class="n">Linux</span> <span class="mf">3.13</span>
+
+    <span class="nl">Conflicts:</span>
+        <span class="n">include</span><span class="o">/</span><span class="n">net</span><span class="o">/</span><span class="n">xfrm</span><span class="p">.</span><span class="n">h</span>
+
+    <span class="n">Simple</span> <span class="n">merge</span> <span class="n">where</span> <span class="n">v3</span><span class="mf">.13</span> <span class="n">removed</span> <span class="err">&#39;</span><span class="k">extern</span><span class="err">&#39;</span> <span class="n">from</span> <span class="n">definitions</span> <span class="n">and</span> <span class="n">the</span> <span class="n">audit</span>
+    <span class="n">tree</span> <span class="n">did</span> <span class="n">s</span><span class="o">/</span><span class="n">u32</span><span class="o">/</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="o">/</span> <span class="n">to</span> <span class="n">the</span> <span class="n">same</span> <span class="n">definitions</span><span class="p">.</span>
+</pre></div>
+
+
+<p>As you can see (from the <code>Merge:</code> header), this is a merge commit, in
+which an entire set of changes was joined into the <code>master</code> branch.
+So while this commit is technically the first commit in which this
+problem appears in the <code>master</code> branch...it is not actually the commit
+that introduced the problem.</p>
+<p>I was in luck, though, because looking at the history for the left
+side of this branch (starting with <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=f3411cb">f3411cb</a>) showed a series of
+patches to the audit subsystem:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">log</span> <span class="o">--</span><span class="n">oneline</span> <span class="n">f3411cb</span>
+<span class="n">f3411cb</span> <span class="n">audit</span><span class="o">:</span> <span class="n">whitespace</span> <span class="n">fix</span> <span class="n">in</span> <span class="n">kernel</span><span class="o">-</span><span class="n">parameters</span><span class="p">.</span><span class="n">txt</span>
+<span class="mi">8626877</span> <span class="n">audit</span><span class="o">:</span> <span class="n">fix</span> <span class="n">location</span> <span class="n">of</span> <span class="n">__net_initdata</span> <span class="k">for</span> <span class="n">audit_net_ops</span>
+<span class="mf">4f</span><span class="mo">06632</span> <span class="n">audit</span><span class="o">:</span> <span class="n">remove</span> <span class="n">pr_info</span> <span class="k">for</span> <span class="n">every</span> <span class="n">network</span> <span class="n">namespace</span>
+<span class="mf">262f</span><span class="n">d3a</span> <span class="n">audit</span><span class="o">:</span> <span class="n">Modify</span> <span class="n">a</span> <span class="n">set</span> <span class="n">of</span> <span class="n">system</span> <span class="n">calls</span> <span class="n">in</span> <span class="n">audit</span> <span class="n">class</span> <span class="n">definitions</span>
+<span class="mf">3e1</span><span class="n">d0bb</span> <span class="n">audit</span><span class="o">:</span> <span class="n">Convert</span> <span class="kt">int</span> <span class="n">limit</span> <span class="n">uses</span> <span class="n">to</span> <span class="n">u32</span>
+<span class="n">d957f7b</span> <span class="n">audit</span><span class="o">:</span> <span class="n">Use</span> <span class="n">more</span> <span class="n">current</span> <span class="n">logging</span> <span class="n">style</span>
+<span class="n">b8dbc32</span> <span class="n">audit</span><span class="o">:</span> <span class="n">Use</span> <span class="n">hex_byte_pack_upper</span>
+<span class="mo">06</span><span class="n">bdadd</span> <span class="n">audit</span><span class="o">:</span> <span class="n">correct</span> <span class="n">a</span> <span class="n">type</span> <span class="n">mismatch</span> <span class="n">in</span> <span class="n">audit_syscall_exit</span><span class="p">()</span>
+<span class="mi">1</span><span class="n">ce319f</span> <span class="n">audit</span><span class="o">:</span> <span class="n">reorder</span> <span class="n">AUDIT_TTY_SET</span> <span class="n">arguments</span>
+<span class="mf">0e23</span><span class="n">bac</span> <span class="n">audit</span><span class="o">:</span> <span class="n">rework</span> <span class="n">AUDIT_TTY_SET</span> <span class="n">to</span> <span class="n">only</span> <span class="n">grab</span> <span class="n">spin_lock</span> <span class="n">once</span>
+<span class="mf">3f</span><span class="mi">0</span><span class="n">c5fa</span> <span class="n">audit</span><span class="o">:</span> <span class="n">remove</span> <span class="n">needless</span> <span class="k">switch</span> <span class="n">in</span> <span class="n">AUDIT_SET</span>
+<span class="mi">70249</span><span class="n">a9</span> <span class="n">audit</span><span class="o">:</span> <span class="n">use</span> <span class="n">define</span><span class="err">&#39;</span><span class="n">s</span> <span class="k">for</span> <span class="n">audit</span> <span class="n">version</span>
+</pre></div>
+
+
+<p>...etc.</p>
+<p>I picked as a starting point the merge commit previous to <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=f3411cb">f3411cb</a>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">log</span> <span class="o">--</span><span class="n">merges</span> <span class="o">-</span><span class="mi">1</span>
+<span class="n">commit</span> <span class="n">fc582aef7dcc27a7120cf232c1e76c569c7b6eab</span>
+<span class="nl">Merge:</span> <span class="mi">9175</span><span class="n">c9d</span> <span class="mf">5e01</span><span class="n">dc7</span>
+<span class="nl">Author:</span> <span class="n">Eric</span> <span class="n">Paris</span> <span class="o">&lt;</span><span class="n">eparis</span><span class="err">@</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">&gt;</span>
+<span class="nl">Date:</span>   <span class="n">Fri</span> <span class="n">Nov</span> <span class="mi">22</span> <span class="mi">18</span><span class="o">:</span><span class="mi">57</span><span class="o">:</span><span class="mi">08</span> <span class="mi">2013</span> <span class="o">-</span><span class="mo">0500</span>
+
+    <span class="n">Merge</span> <span class="n">tag</span> <span class="err">&#39;</span><span class="n">v3</span><span class="mf">.12</span><span class="err">&#39;</span>
+
+    <span class="n">Linux</span> <span class="mf">3.12</span>
+
+    <span class="nl">Conflicts:</span>
+        <span class="n">fs</span><span class="o">/</span><span class="n">exec</span><span class="p">.</span><span class="n">c</span>
+</pre></div>
+
+
+<p>And ran <code>git bisect</code> again from <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=fc582ae">that commit</a> through to <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=f3411cb">f3411cb</a>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">bisect</span> <span class="n">start</span> <span class="n">f3411cb</span> <span class="n">fc582ae</span>
+<span class="err">$</span> <span class="n">git</span> <span class="n">bisect</span> <span class="n">run</span> <span class="n">sh</span> <span class="n">bisect</span><span class="o">-</span><span class="n">test</span>
+</pre></div>
+
+
+<p>Which ultimately ended up with <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7">this commit</a>:</p>
+<div class="highlight"><pre><span class="mf">33f</span><span class="n">aba7fa7f2288d2f8aaea95958b2c97bf9ebfb</span> <span class="n">is</span> <span class="n">the</span> <span class="n">first</span> <span class="n">bad</span> <span class="n">commit</span>
+<span class="n">commit</span> <span class="mf">33f</span><span class="n">aba7fa7f2288d2f8aaea95958b2c97bf9ebfb</span>
+<span class="nl">Author:</span> <span class="n">Richard</span> <span class="n">Guy</span> <span class="n">Briggs</span> <span class="o">&lt;</span><span class="n">rgb</span><span class="err">@</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">&gt;</span>
+<span class="nl">Date:</span>   <span class="n">Tue</span> <span class="n">Jul</span> <span class="mi">16</span> <span class="mi">13</span><span class="o">:</span><span class="mi">18</span><span class="o">:</span><span class="mi">45</span> <span class="mi">2013</span> <span class="o">-</span><span class="mo">0400</span>
+
+    <span class="nl">audit:</span> <span class="n">listen</span> <span class="n">in</span> <span class="n">all</span> <span class="n">network</span> <span class="n">namespaces</span>
+
+    <span class="n">Convert</span> <span class="n">audit</span> <span class="n">from</span> <span class="n">only</span> <span class="n">listening</span> <span class="n">in</span> <span class="n">init_net</span> <span class="n">to</span> <span class="n">use</span> <span class="n">register_pernet_subsys</span><span class="p">()</span>
+    <span class="n">to</span> <span class="n">dynamically</span> <span class="n">manage</span> <span class="n">the</span> <span class="n">netlink</span> <span class="n">socket</span> <span class="n">list</span><span class="p">.</span>
+
+    <span class="n">Signed</span><span class="o">-</span><span class="n">off</span><span class="o">-</span><span class="n">by</span><span class="o">:</span> <span class="n">Richard</span> <span class="n">Guy</span> <span class="n">Briggs</span> <span class="o">&lt;</span><span class="n">rgb</span><span class="err">@</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">&gt;</span>
+    <span class="n">Signed</span><span class="o">-</span><span class="n">off</span><span class="o">-</span><span class="n">by</span><span class="o">:</span> <span class="n">Eric</span> <span class="n">Paris</span> <span class="o">&lt;</span><span class="n">eparis</span><span class="err">@</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">&gt;</span>
+</pre></div>
+
+
+<p>Running <code>git bisect log</code> shows us what revisions were checked as part
+of this process:</p>
+<div class="highlight"><pre><span class="cp"># bad: [f3411cb2b2e396a41ed3a439863f028db7140a34] audit: whitespace fix in kernel-parameters.txt</span>
+<span class="cp"># good: [fc582aef7dcc27a7120cf232c1e76c569c7b6eab] Merge tag &#39;v3.12&#39;</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">start</span> <span class="err">&#39;</span><span class="n">f3411cb</span><span class="sc">&#39; &#39;</span><span class="n">fc582ae</span><span class="err">&#39;</span>
+<span class="cp"># bad: [ff235f51a138fc61e1a22dcb8b072d9c78c2a8cc] audit: Added exe field to audit core dump signal log</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">bad</span> <span class="n">ff235f51a138fc61e1a22dcb8b072d9c78c2a8cc</span>
+<span class="cp"># bad: [51cc83f024ee51de9da70c17e01ec6de524f5906] audit: add audit_backlog_wait_time configuration option</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">bad</span> <span class="mi">51</span><span class="n">cc83f024ee51de9da70c17e01ec6de524f5906</span>
+<span class="cp"># bad: [ae887e0bdcddb9d7acd8f1eb7b7795b438aa4950] audit: make use of remaining sleep time from wait_for_auditd</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">bad</span> <span class="n">ae887e0bdcddb9d7acd8f1eb7b7795b438aa4950</span>
+<span class="cp"># good: [2f2ad1013322c8f6c40fc6dafdbd32442fa730ad] audit: restore order of tty and ses fields in log output</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">good</span> <span class="mf">2f</span><span class="mi">2</span><span class="n">ad1013322c8f6c40fc6dafdbd32442fa730ad</span>
+<span class="cp"># bad: [e789e561a50de0aaa8c695662d97aaa5eac9d55f] audit: reset audit backlog wait time after error recovery</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">bad</span> <span class="n">e789e561a50de0aaa8c695662d97aaa5eac9d55f</span>
+<span class="cp"># bad: [33faba7fa7f2288d2f8aaea95958b2c97bf9ebfb] audit: listen in all network namespaces</span>
+<span class="n">git</span> <span class="n">bisect</span> <span class="n">bad</span> <span class="mf">33f</span><span class="n">aba7fa7f2288d2f8aaea95958b2c97bf9ebfb</span>
+<span class="cp"># first bad commit: [33faba7fa7f2288d2f8aaea95958b2c97bf9ebfb] audit: listen in all network namespaces</span>
+</pre></div>
+
+
+<p>The commit found by <code>git bisect</code> seems like a reasonable candidate;
+it's a patch against the audit subsystem and has something to do with
+namespaces, which are central to Docker's proper operation.</p>
+<h2>Debugging the problem</h2>
+<p>We can boot the kernel built from 33faba7 with the <code>boot-kernel</code>
+script, adding the <code>-s</code> argument to qemu to start a <code>gdbserver</code> on
+port <code>1234</code>:</p>
+<div class="highlight"><pre><span class="n">sh</span> <span class="n">BOOT_ARGS</span><span class="o">=</span><span class="n">NO_DOCKER_TEST</span> <span class="n">QEMU_ARGS</span><span class="o">=</span><span class="s">&quot;-s&quot;</span> <span class="n">boot</span><span class="o">-</span><span class="n">kernel</span>
+</pre></div>
+
+
+<blockquote>
+<p>A caveat about attaching to qemu with gdb: qemu has a <code>-S</code> option
+that will cause the virtual machine to halt at startup, such that
+you can attach before it starts booting and -- in theory -- set
+breakpoints in the early boot process.  In practice this doesn't
+work well at all (possibly because the vm switches from 32- to
+64-bit operation during the boot process, which makes gdb unhappy).
+You're better off attaching after the kernel has booted.</p>
+</blockquote>
+<p>In another window, we attach <code>gdb</code> to the running <code>qemu</code> process:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">gdb</span> <span class="n">vmlinux</span>
+<span class="n">Reading</span> <span class="n">symbols</span> <span class="n">from</span> <span class="n">vmlinux</span><span class="p">...</span><span class="n">done</span><span class="p">.</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span> <span class="n">target</span> <span class="n">remote</span> <span class="o">:</span><span class="mi">1234</span>
+<span class="n">Remote</span> <span class="n">debugging</span> <span class="n">using</span> <span class="o">:</span><span class="mi">1234</span>
+<span class="n">native_safe_halt</span> <span class="p">()</span> <span class="n">at</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">lars</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">linux</span><span class="o">/</span><span class="n">arch</span><span class="o">/</span><span class="n">x86</span><span class="o">/</span><span class="n">include</span><span class="o">/</span><span class="n">asm</span><span class="o">/</span><span class="n">irqflags</span><span class="p">.</span><span class="n">h</span><span class="o">:</span><span class="mi">50</span>
+<span class="mi">50</span>  <span class="p">}</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span>
+</pre></div>
+
+
+<p>I know we're getting the <code>EPERM</code> in response to sending audit
+messages.  Looking through the code in <code>kernel/audit.c</code>, the
+<code>audit_receive_msg</code> seems like a reasonable place to start poking
+about.  At the beginning of <code>audit_receive_msg</code>, I see the following
+code:</p>
+<div class="highlight"><pre><span class="n">err</span> <span class="o">=</span> <span class="n">audit_netlink_ok</span><span class="p">(</span><span class="n">skb</span><span class="p">,</span> <span class="n">msg_type</span><span class="p">);</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">err</span><span class="p">)</span>
+  <span class="k">return</span> <span class="n">err</span><span class="p">;</span>
+</pre></div>
+
+
+<p>So let's set a breakpoint there if <code>audit_netlink_ok()</code> returns an
+error:</p>
+<div class="highlight"><pre><span class="p">(</span><span class="n">gdb</span><span class="p">)</span> <span class="n">br</span> <span class="n">kernel</span><span class="o">/</span><span class="n">audit</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">752</span> <span class="k">if</span> <span class="p">(</span><span class="n">err</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+</pre></div>
+
+
+<p>And let our qemu process continue running:</p>
+<div class="highlight"><pre><span class="p">(</span><span class="n">gdb</span><span class="p">)</span> <span class="k">continue</span>
+<span class="n">Continuing</span><span class="p">.</span>
+</pre></div>
+
+
+<p>Inside the qemu instance I start docker:</p>
+<div class="highlight"><pre><span class="o">-</span><span class="n">bash</span><span class="o">-</span><span class="mf">4.2</span><span class="err">#</span> <span class="n">docker</span> <span class="n">run</span> <span class="o">-</span><span class="n">it</span> <span class="n">fedora</span> <span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">su</span> <span class="o">-</span><span class="n">c</span> <span class="n">uptime</span>
+</pre></div>
+
+
+<p>And eventually <code>gdb</code> hits the breakpoint:</p>
+<div class="highlight"><pre><span class="n">Breakpoint</span> <span class="mi">1</span><span class="p">,</span> <span class="n">audit_receive_msg</span> <span class="p">(</span><span class="n">nlh</span><span class="o">=</span><span class="mh">0xffff88003819a400</span><span class="p">,</span> 
+    <span class="n">skb</span><span class="o">=</span><span class="mh">0xffff880038044300</span><span class="p">)</span> <span class="n">at</span> <span class="n">kernel</span><span class="o">/</span><span class="n">audit</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">752</span>
+<span class="mi">752</span>     <span class="k">if</span> <span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+
+
+<p>If I look at the value of <code>err</code> at this point:</p>
+<div class="highlight"><pre><span class="p">(</span><span class="n">gdb</span><span class="p">)</span> <span class="n">print</span> <span class="n">err</span>
+<span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+</pre></div>
+
+
+<p>That it is, in fact, <code>-EPERM</code>, which suggests we're on the right
+track.  Taking a closer look at <code>audit_netlink_ok()</code>, it's obvious
+that there are only three places where it can return <code>-EPERM</code>.  I
+tried setting some breakpoint in this function but they weren't
+working correctly, probably due to to optimizations performed when
+compiling the kernel.  So instead of <code>gdb</code>, in this step we just add a
+bunch of <code>pr_err()</code> statements to print out debugging information on
+the console:</p>
+<div class="highlight"><pre><span class="k">if</span> <span class="p">((</span><span class="n">current_user_ns</span><span class="p">()</span> <span class="o">!=</span> <span class="o">&amp;</span><span class="n">init_user_ns</span><span class="p">)</span> <span class="o">||</span>
+    <span class="p">(</span><span class="n">task_active_pid_ns</span><span class="p">(</span><span class="n">current</span><span class="p">)</span> <span class="o">!=</span> <span class="o">&amp;</span><span class="n">init_pid_ns</span><span class="p">))</span> <span class="p">{</span>
+  <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;currnet_user_ns() check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="k">return</span> <span class="o">-</span><span class="n">EPERM</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="k">case</span> <span class="n">AUDIT_MAKE_EQUIV</span>:
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">capable</span><span class="p">(</span><span class="n">CAP_AUDIT_CONTROL</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;CAP_AUDIT_CONTROL check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="o">-</span><span class="n">EPERM</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">break</span><span class="p">;</span>
+<span class="k">case</span> <span class="n">AUDIT_USER</span>:
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="k">case</span> <span class="n">AUDIT_FIRST_USER_MSG</span> <span class="p">...</span> <span class="n">AUDIT_LAST_USER_MSG</span>:
+<span class="k">case</span> <span class="n">AUDIT_FIRST_USER_MSG2</span> <span class="p">...</span> <span class="n">AUDIT_LAST_USER_MSG2</span>:
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">capable</span><span class="p">(</span><span class="n">CAP_AUDIT_WRITE</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;CAP_AUDIT_WRITE check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="o">-</span><span class="n">EPERM</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">break</span><span class="p">;</span>
+</pre></div>
+
+
+<p>With these in place, if I run the <code>docker</code> command again I see:</p>
+<div class="highlight"><pre><span class="p">[</span>   <span class="mf">12.239860</span><span class="p">]</span> <span class="n">currnet_user_ns</span><span class="p">()</span> <span class="n">check</span> <span class="n">failed</span>
+<span class="nl">su:</span> <span class="n">System</span> <span class="n">error</span>
+</pre></div>
+
+
+<p>It looks like we've found out where it's failing!  Of course, we're
+checking code right now that is several commits behind v3.15, so let's
+take a look the same function in the 3.15 release:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">checkout</span> <span class="n">v3</span><span class="mf">.15</span>
+</pre></div>
+
+
+<p>Looking at <code>audit_netlink_ok</code> in <code>kernel/audit.c</code>, it looks as if that
+initial check has changed:</p>
+<div class="highlight"><pre>    <span class="cm">/* Only support initial user namespace for now. */</span>
+    <span class="cm">/*</span>
+<span class="cm">     * We return ECONNREFUSED because it tricks userspace into thinking</span>
+<span class="cm">     * that audit was not configured into the kernel.  Lots of users</span>
+<span class="cm">     * configure their PAM stack (because that&#39;s what the distro does)</span>
+<span class="cm">     * to reject login if unable to send messages to audit.  If we return</span>
+<span class="cm">     * ECONNREFUSED the PAM stack thinks the kernel does not have audit</span>
+<span class="cm">     * configured in and will let login proceed.  If we return EPERM</span>
+<span class="cm">     * userspace will reject all logins.  This should be removed when we</span>
+<span class="cm">     * support non init namespaces!!</span>
+<span class="cm">     */</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">current_user_ns</span><span class="p">()</span> <span class="o">!=</span> <span class="o">&amp;</span><span class="n">init_user_ns</span><span class="p">)</span>
+            <span class="k">return</span> <span class="o">-</span><span class="n">ECONNREFUSED</span><span class="p">;</span>
+</pre></div>
+
+
+<p>So let's insert our print statements into this version of the code and
+see if we get the same behavior:</p>
+<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="n">current_user_ns</span><span class="p">()</span> <span class="o">!=</span> <span class="o">&amp;</span><span class="n">init_user_ns</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;current_user-ns() check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="k">return</span> <span class="o">-</span><span class="n">ECONNREFUSED</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="k">case</span> <span class="n">AUDIT_MAKE_EQUIV</span>:
+  <span class="cm">/* Only support auditd and auditctl in initial pid namespace</span>
+<span class="cm">   * for now. */</span>
+  <span class="k">if</span> <span class="p">((</span><span class="n">task_active_pid_ns</span><span class="p">(</span><span class="n">current</span><span class="p">)</span> <span class="o">!=</span> <span class="o">&amp;</span><span class="n">init_pid_ns</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;init_pid_ns check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">return</span> <span class="o">-</span><span class="n">EPERM</span><span class="p">;</span>
+  <span class="p">}</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">netlink_capable</span><span class="p">(</span><span class="n">skb</span><span class="p">,</span> <span class="n">CAP_AUDIT_CONTROL</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;CAP_AUDIT_CONTROL check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="o">-</span><span class="n">EPERM</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">break</span><span class="p">;</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="k">case</span> <span class="n">AUDIT_USER</span>:
+<span class="k">case</span> <span class="n">AUDIT_FIRST_USER_MSG</span> <span class="p">...</span> <span class="n">AUDIT_LAST_USER_MSG</span>:
+<span class="k">case</span> <span class="n">AUDIT_FIRST_USER_MSG2</span> <span class="p">...</span> <span class="n">AUDIT_LAST_USER_MSG2</span>:
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">netlink_capable</span><span class="p">(</span><span class="n">skb</span><span class="p">,</span> <span class="n">CAP_AUDIT_WRITE</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">pr_err</span><span class="p">(</span><span class="s">&quot;CAP_AUDIT_WRITE check failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="o">-</span><span class="n">EPERM</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">break</span><span class="p">;</span>
+</pre></div>
+
+
+<p>Running the v3.15 kernel, I see:</p>
+<div class="highlight"><pre><span class="p">[</span>   <span class="mf">26.273992</span><span class="p">]</span> <span class="n">audit</span><span class="o">:</span> <span class="n">CAP_AUDIT_WRITE</span> <span class="n">check</span> <span class="n">failed</span>
+<span class="nl">su:</span> <span class="n">System</span> <span class="n">error</span>
+</pre></div>
+
+
+<p>So it looks like the intial failure in <code>audit_netlink_ok()</code> was fixed,
+but we're stilling failing the <code>CAP_AUDIT_WRITE</code> check.</p>
+<h3>Summary</h3>
+<p>What's going on here?</p>
+<p>Prior to <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7">33faba7</a>, audit messages were only accepted in the main
+network namespace.  Inside other network namespaces, processes sending
+audit messages would simply receive <code>ECONNREFUSED</code>.  For example, this
+is the result of using <code>strace</code> on that <code>docker run</code> command in a
+pre-<a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7">33faba7</a> kernel:</p>
+<div class="highlight"><pre><span class="mi">539</span>   <span class="n">sendto</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s">&quot;...authentication acct=</span><span class="se">\&quot;</span><span class="s">root</span><span class="se">\&quot;</span><span class="s"> exe=</span><span class="se">\&quot;</span><span class="s">/usr/bin/su</span><span class="se">\&quot;</span><span class="s"> hostname=? a&quot;</span><span class="p">...,</span>
+      <span class="mi">112</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">{</span><span class="n">sa_family</span><span class="o">=</span><span class="n">AF_NETLINK</span><span class="p">,</span> <span class="n">pid</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">groups</span><span class="o">=</span><span class="mo">00000000</span><span class="p">},</span> <span class="mi">12</span><span class="p">)</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span> <span class="n">ECONNREFUSED</span> <span class="p">(</span><span class="n">Connection</span> <span class="n">refused</span><span class="p">)</span>
+</pre></div>
+
+
+<p>With <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7">33faba7</a>, audit messages are now accepted inside network
+namespaces. This means that instead of simply getting <code>ECONNREFUSED</code>,
+messages must pass the kernel capability check.  I spoke with some of
+the audit subsystem maintainers (including Richard Guy Briggs, the
+author of this patch series), and the general consensus is that "if
+you want to write audit messages you need <code>CAP_AUDIT_WRITE</code>".</p>
+<p>So while this patch did change the behavior of the kernel from the
+perspective of container tools such as Docker, the fix needs to be in
+the tool creating the namespaces.</p>
+<h2>Results</h2>
+<p>This issue was reported against Fedora in <a href="https://bugzilla.redhat.com/show_bug.cgi?id=1121345">BZ 1121345</a> and <a href="https://bugzilla.redhat.com/show_bug.cgi?id=1119849">BZ
+1119849</a>.  This issue was also reported against Docker in <a href="https://github.com/dotcloud/docker/issues/6345">GHI 6345</a>
+and <a href="https://github.com/dotcloud/docker/issues/7123">GHI 7123</a>.</p>
+<p>This problem has been corrected upstream in <a href="https://github.com/dotcloud/docker/pull/7179">PR 7179</a>.</p>
+<p>Package <a href="https://admin.fedoraproject.org/updates/FEDORA-2014-8877/docker-io-1.0.0-9.fc20">docker-io-1.0.0-9.fc20</a>, which includes
+the above fix, is now available for Fedora 20 (and Fedora 19).</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

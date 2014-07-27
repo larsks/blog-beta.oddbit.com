@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged xml</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>xml</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/09/10/parsing-xml-with-awk/">Mon 10 September 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/awk/index.html" rel="tag">awk</a>,  <a href="http://localhost:8000/tag/xml/index.html" rel="tag">xml</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/09/10/parsing-xml-with-awk/" title="Permalink to Parsing XML with Awk" rel="bookmark">Parsing XML with Awk</a>
+		</h2>
+		<div class="entry-content">
+			<p>Recently, changes from the <a href="http://gawkextlib.sourceforge.net/">xmlgawk</a> project have been integrated into
+<a href="https://www.gnu.org/software/gawk/">GNU awk</a>, and xmlgawk has been renamed to <a href="http://gawkextlib.sourceforge.net/">gawkextlib</a>. With both a
+recent (post-4.0.70) gawk and gawkextlib built and installed
+correctly, you can write simple XML parsing scripts using gawk.</p>
+<p>For example, let's say you would like to generate a list of disk image
+files associated with a KVM virtual instance. You can use the <code>virsh
+dumpxml</code> command to get output like the following:</p>
+<div class="highlight"><pre><span class="nt">&lt;devices&gt;</span>
+  <span class="nt">&lt;emulator&gt;</span>/usr/bin/qemu-kvm<span class="nt">&lt;/emulator&gt;</span>
+  <span class="nt">&lt;disk</span> <span class="na">type=</span><span class="s">&#39;file&#39;</span> <span class="na">device=</span><span class="s">&#39;disk&#39;</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;driver</span> <span class="na">name=</span><span class="s">&#39;qemu&#39;</span> <span class="na">type=</span><span class="s">&#39;qcow2&#39;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;source</span> <span class="na">file=</span><span class="s">&#39;/var/lib/libvirt/images/client.qcow2&#39;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;target</span> <span class="na">dev=</span><span class="s">&#39;sda&#39;</span> <span class="na">bus=</span><span class="s">&#39;ide&#39;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;alias</span> <span class="na">name=</span><span class="s">&#39;ide0-0-0&#39;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;address</span> <span class="na">type=</span><span class="s">&#39;drive&#39;</span> <span class="na">controller=</span><span class="s">&#39;0&#39;</span> <span class="na">bus=</span><span class="s">&#39;0&#39;</span> <span class="na">unit=</span><span class="s">&#39;0&#39;</span><span class="nt">/&gt;</span>
+  <span class="nt">&lt;/disk&gt;</span>
+ ...
+<span class="nt">&lt;/devices&gt;</span>
+</pre></div>
+
+
+<p>You could then write code similar to <a href="https://gist.github.com/4012705">the
+following</a> to extract the relevant
+information:</p>
+<div class="highlight"><pre><span class="err">@</span><span class="n">load</span> <span class="s">&quot;xml&quot;</span>
+
+<span class="n">XMLSTARTELEM</span> <span class="o">==</span> <span class="s">&quot;disk&quot;</span>  <span class="p">{</span>
+        <span class="n">in_disk</span><span class="o">=</span><span class="mi">1</span>
+        <span class="n">disk_file</span><span class="o">=</span><span class="s">&quot;&quot;</span>
+        <span class="n">disk_target</span><span class="o">=</span><span class="s">&quot;&quot;</span>
+<span class="p">}</span>
+
+<span class="n">in_disk</span> <span class="o">==</span> <span class="mi">1</span> <span class="o">&amp;&amp;</span> <span class="n">XMLSTARTELEM</span> <span class="o">==</span> <span class="s">&quot;source&quot;</span> <span class="p">{</span>
+        <span class="n">disk_file</span><span class="o">=</span><span class="n">XMLATTR</span><span class="p">[</span><span class="s">&quot;file&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">in_disk</span> <span class="o">==</span> <span class="mi">1</span> <span class="o">&amp;&amp;</span> <span class="n">XMLSTARTELEM</span> <span class="o">==</span> <span class="s">&quot;target&quot;</span> <span class="p">{</span>
+        <span class="n">disk_target</span><span class="o">=</span><span class="n">XMLATTR</span><span class="p">[</span><span class="s">&quot;dev&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">XMLENDELEM</span> <span class="o">==</span> <span class="s">&quot;disk&quot;</span>    <span class="p">{</span>
+        <span class="n">in_disk</span><span class="o">=</span><span class="mi">0</span>
+        <span class="n">print</span> <span class="n">disk_target</span><span class="p">,</span> <span class="n">disk_file</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>Given the sample input above, the script will produce the following
+output:</p>
+<div class="highlight"><pre><span class="n">sda</span> <span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">libvirt</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">client</span><span class="p">.</span><span class="n">qcow2</span>
+</pre></div>
+
+
+<p>The xml extension for gawk populates a number of variables that
+can be used in your scripts:</p>
+<ul>
+<li><code>XMLSTARTELEM</code> marks the start of a new element (and is set to the
+  name of that element).</li>
+<li><code>XMLATTR</code> is available when <code>XMLSTARTELEM</code> is set and contains the
+  element attributes.</li>
+<li><code>XMLENDELEM</code> marks the end of an element (and is set to the name of
+  the element).</li>
+</ul>
+<p>There are other variables available, but with this basic set is
+becomes easy to extract information from XML documents.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-next"><a href="http://localhost:8000/tag/xml/index2.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

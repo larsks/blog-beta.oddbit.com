@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged upnp</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>upnp</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2010/01/29/linux-upnp-gateway/">Fri 29 January 2010</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/linux/index.html" rel="tag">linux</a>,  <a href="http://localhost:8000/tag/networking/index.html" rel="tag">networking</a>,  <a href="http://localhost:8000/tag/peertopeer/index.html" rel="tag">peertopeer</a>,  <a href="http://localhost:8000/tag/upnp/index.html" rel="tag">upnp</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2010/01/29/linux-upnp-gateway/" title="Permalink to Linux UPnP Gateway" rel="bookmark">Linux UPnP Gateway</a>
+		</h2>
+		<div class="entry-content">
+			<p>Like many other folks out there, I have several computers in my house connected to the outside world via a Linux box acting as a NAT gateway. I often want to use application such as BitTorrent and Freenet, which require that a number of ports be forwarded from my external connection to the particular computer on which I happen to be working. It turns out there's a protocol for this, called <a href="http://en.wikipedia.org/wiki/Universal_Plug_and_Play">UPnP</a>. From Wikipedia:</p>
+<blockquote>
+<p>Universal Plug and Play (UPnP) is a set of networking protocols
+promulgated by the UPnP Forum. The goals of UPnP are to allow
+devices to connect seamlessly and to simplify the implementation of
+networks in the home (data sharing, communications, and
+entertainment) and in corporate environments for simplified
+installation of computer components.</p>
+</blockquote>
+<p>The practical use of UPnP, from my perspective, is that it allows a device or application <em>inside</em> the network to request specific ports to be forwarded on the gateway. This means that what used to be a manual process -- adding the necessary forwarding rules to my iptables configuration -- is now performed automatically, and only when necessary.</p>
+<p>The <a href="http://linux-igd.sourceforge.net/">Linux UPnP Internet Gateway Device</a> project implements a Linux UPnP service. You can download the source from the project web page.</p>
+<p>Using the gateway service is really simple:</p>
+<ol>
+<li>
+<p>Start upnpd:</p>
+<div class="highlight"><pre><span class="c"># /etc/init.d/upnpd</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>Start your application. You will see messages like the following in syslog (if you are logging DEBUG level messages):</p>
+<div class="highlight"><pre><span class="n">Aug</span>  <span class="mi">6</span> <span class="mi">20</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span><span class="mi">12</span> <span class="n">arcadia</span> <span class="n">upnpd</span><span class="p">[</span><span class="mi">19816</span><span class="p">]</span><span class="o">:</span> <span class="n">Failure</span> <span class="n">in</span>
+  <span class="nl">GateDeviceDeletePortMapping:</span> <span class="n">DeletePortMap</span><span class="o">:</span> <span class="n">Proto</span><span class="o">:</span><span class="n">UDP</span> <span class="n">Port</span><span class="o">:</span><span class="mi">57875</span>
+<span class="n">Aug</span>  <span class="mi">6</span> <span class="mi">20</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span><span class="mi">12</span> <span class="n">arcadia</span> <span class="n">upnpd</span><span class="p">[</span><span class="mi">19816</span><span class="p">]</span><span class="o">:</span> <span class="n">AddPortMap</span><span class="o">:</span> <span class="n">DevUDN</span><span class="o">:</span>
+  <span class="nl">uuid:</span><span class="mi">75802409</span><span class="o">-</span><span class="n">bccb</span><span class="o">-</span><span class="mf">40e7</span><span class="o">-</span><span class="mf">8e6</span><span class="n">c</span><span class="o">-</span><span class="n">fa095ecce13e</span> <span class="n">ServiceID</span><span class="o">:</span> <span class="n">urn</span><span class="o">:</span><span class="n">upnp</span><span class="o">-</span><span class="n">org</span><span class="o">:</span><span class="n">serviceId</span><span class="o">:</span><span class="n">WANIPConn1</span>
+ <span class="nl">RemoteHost:</span> <span class="p">(</span><span class="n">null</span><span class="p">)</span> <span class="n">Prot</span><span class="o">:</span> <span class="n">UDP</span> <span class="n">ExtPort</span><span class="o">:</span> <span class="mi">57875</span> <span class="n">Int</span><span class="o">:</span> <span class="mf">192.168.1.118.57875</span>
+<span class="n">Aug</span>  <span class="mi">6</span> <span class="mi">20</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span><span class="mi">12</span> <span class="n">arcadia</span> <span class="n">upnpd</span><span class="p">[</span><span class="mi">19816</span><span class="p">]</span><span class="o">:</span> <span class="n">Failure</span> <span class="n">in</span>
+  <span class="nl">GateDeviceDeletePortMapping:</span> <span class="n">DeletePortMap</span><span class="o">:</span> <span class="n">Proto</span><span class="o">:</span><span class="n">UDP</span> <span class="n">Port</span><span class="o">:</span><span class="mi">11657</span>
+<span class="n">Aug</span>  <span class="mi">6</span> <span class="mi">20</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span><span class="mi">12</span> <span class="n">arcadia</span> <span class="n">upnpd</span><span class="p">[</span><span class="mi">19816</span><span class="p">]</span><span class="o">:</span> <span class="n">AddPortMap</span><span class="o">:</span> <span class="n">DevUDN</span><span class="o">:</span>
+  <span class="nl">uuid:</span><span class="mi">75802409</span><span class="o">-</span><span class="n">bccb</span><span class="o">-</span><span class="mf">40e7</span><span class="o">-</span><span class="mf">8e6</span><span class="n">c</span><span class="o">-</span><span class="n">fa095ecce13e</span> <span class="n">ServiceID</span><span class="o">:</span> <span class="n">urn</span><span class="o">:</span><span class="n">upnp</span><span class="o">-</span><span class="n">org</span><span class="o">:</span><span class="n">serviceId</span><span class="o">:</span><span class="n">WANIPConn1</span>
+  <span class="nl">RemoteHost:</span> <span class="p">(</span><span class="n">null</span><span class="p">)</span> <span class="n">Prot</span><span class="o">:</span> <span class="n">UDP</span> <span class="n">ExtPort</span><span class="o">:</span> <span class="mi">11657</span> <span class="n">Int</span><span class="o">:</span> <span class="mf">192.168.1.118.11657</span>
+</pre></div>
+
+
+<p>For each forwarding requested by the client, upnpd first attempts to remove the mapping and then creates a new rule. Exactly how upnp implements these rules on your system is controlled by <code>/etc/upnpd.conf</code> -- if you want to use something other than <em>iptables</em>, or use custom chains, this is where you would make your changes.</p>
+</li>
+<li>
+<p>Look at your firewall rules. Upnpd modifies the <em>FORWARD</em> chain in the <em>filter</em> table and the <em>PREROUTING</em> chain in the <em>nat</em> table. You can change this behavior by editing <code>/etc/upnpd.conf</code>.</p>
+<p>To see forwarding rules:</p>
+<div class="highlight"><pre><span class="c"># iptables -nL FORWARD</span>
+</pre></div>
+
+
+<p>The rules might look something like this:</p>
+<div class="highlight"><pre><span class="n">Chain</span> <span class="n">FORWARD</span> <span class="p">(</span><span class="n">policy</span> <span class="n">DROP</span><span class="p">)</span>
+<span class="n">target</span>     <span class="n">prot</span> <span class="n">opt</span> <span class="n">source</span>               <span class="n">destination</span>
+<span class="n">ACCEPT</span>     <span class="n">udp</span>  <span class="o">--</span>  <span class="mf">0.0.0.0</span><span class="o">/</span><span class="mi">0</span>            <span class="mf">192.168.1.118</span>       <span class="n">udp</span> <span class="n">dpt</span><span class="o">:</span><span class="mi">57875</span>
+<span class="n">ACCEPT</span>     <span class="n">udp</span>  <span class="o">--</span>  <span class="mf">0.0.0.0</span><span class="o">/</span><span class="mi">0</span>            <span class="mf">192.168.1.118</span>       <span class="n">udp</span> <span class="n">dpt</span><span class="o">:</span><span class="mi">11657</span>
+</pre></div>
+
+
+<p>To see prerouting rules:</p>
+<div class="highlight"><pre><span class="c"># iptables -t nat -vnL PREROUTING</span>
+</pre></div>
+
+
+<p>The rules might look something like this:</p>
+<div class="highlight"><pre><span class="n">Chain</span> <span class="n">PREROUTING</span> <span class="p">(</span><span class="n">policy</span> <span class="n">ACCEPT</span><span class="p">)</span>
+<span class="n">target</span>     <span class="n">prot</span> <span class="n">opt</span> <span class="n">source</span>               <span class="n">destination</span>
+<span class="n">DNAT</span>       <span class="n">udp</span>  <span class="o">--</span>  <span class="mf">0.0.0.0</span><span class="o">/</span><span class="mi">0</span>            <span class="mf">0.0.0.0</span><span class="o">/</span><span class="mi">0</span>           <span class="n">udp</span> <span class="n">dpt</span><span class="o">:</span><span class="mi">11657</span> <span class="n">to</span><span class="o">:</span><span class="mf">192.168.1.118</span><span class="o">:</span><span class="mi">11657</span>
+<span class="n">DNAT</span>       <span class="n">udp</span>  <span class="o">--</span>  <span class="mf">0.0.0.0</span><span class="o">/</span><span class="mi">0</span>            <span class="mf">0.0.0.0</span><span class="o">/</span><span class="mi">0</span>           <span class="n">udp</span> <span class="n">dpt</span><span class="o">:</span><span class="mi">57875</span> <span class="n">to</span><span class="o">:</span><span class="mf">192.168.1.118</span><span class="o">:</span><span class="mi">57875</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>Upnpd will delete the mappings when they expire. The expiration time may be set by the client, or, if the client specifies no expiration, than by the "duration" configuration item in /etc/upnpd.conf.</p>
+</li>
+</ol>
+<h1>Configuration file</h1>
+<p>The upnpd configuration file (<code>/etc/upnpd.conf</code>) allows you to change various aspects of upnpd's behavior. Of particular interest:</p>
+<ul>
+<li>
+<p><code>insert_forward_rules</code><br />
+  Default: <code>yes</code></p>
+<p>Whether or not upnpd needs to create entries in the <code>FORWARD</code> chain of the <code>filter</code> table. If your <code>FORWARD</code> chain has a policy of <code>DROP</code> you need set to yes.</p>
+</li>
+<li>
+<p><code>forward_chain_name</code><br />
+  Default: <code>FORWARD</code></p>
+<p>Normally, upnpd creates entries in the <code>FORWARD</code> chain. If you have a more advanced firewall setup this may not be the appropriate place to make changes. If you enter a custom name here, you will need to create the corresponding chain:</p>
+<div class="highlight"><pre><span class="n">iptables</span> <span class="o">-</span><span class="n">N</span> <span class="n">my</span><span class="o">-</span><span class="n">forward</span><span class="o">-</span><span class="n">chain</span>
+</pre></div>
+
+
+<p>You will also need to call this chain from the <em>FORWARD</em> chain:</p>
+<div class="highlight"><pre><span class="n">iptables</span> <span class="o">-</span><span class="n">A</span> <span class="n">FORWARD</span> <span class="o">-</span><span class="n">j</span> <span class="n">my</span><span class="o">-</span><span class="n">forward</span><span class="o">-</span><span class="n">chain</span>
+</pre></div>
+
+
+</li>
+<li>
+<p><code>prerouting_chain_name</code><br />
+  Default: <code>PREROUTING</code></p>
+<p>Like <code>forward</code>chain<code>name</code>, but for entries in the <code>nat</code> table.</p>
+</li>
+</ul>
+<h1>Security considerations</h1>
+<p>Consider the following, from the <a href="http://linux-igd.sourceforge.net/documentation.php">Linux IGD documentation</a>:</p>
+<blockquote>
+<p>UPnP version 1.0, on which this program is based, is inherently flawed...what appears to have happened is that in Microsoft's first UPnP implementation they weren't concerned with security .... Simply all they wanted was connectivity.... The UPnP server, by itself, does no security checking. If it recieves a UPnP request to add a portmapping for some ip address inside the firewall, it just does it. This program will attempt to verify the source ip contained in the UPnP request against the source ip of the actual packet, but as always, these can be forged. The UPnP server makes no attempt to verify this connection with the caller, and therefore it just assumes that whoever asked is the person really wanting it.</p>
+</blockquote>
+<p>In other words, in the battle between security and convenience, UPnP is weighs in heavily on the convenience side. You will have to decide whether this meets your particular requirements.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

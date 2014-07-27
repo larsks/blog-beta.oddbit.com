@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2013/10/04/automatic-dns-entries-for-libvirt-domains/">Fri 04 October 2013</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/libvirt/index.html" rel="tag">libvirt</a>,  <a href="http://localhost:8000/tag/virtualization/index.html" rel="tag">virtualization</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2013/10/04/automatic-dns-entries-for-libvirt-domains/" title="Permalink to Automatic hostname entries for libvirt domains" rel="bookmark">Automatic hostname entries for libvirt domains</a>
+		</h2>
+		<div class="entry-content">
+			<p>Have you ever wished that you could use <code>libvirt</code> domain names as
+hostnames?  So that you could do something like this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">virt</span><span class="o">-</span><span class="n">install</span> <span class="o">-</span><span class="n">n</span> <span class="n">anewhost</span> <span class="p">...</span>
+<span class="err">$</span> <span class="n">ssh</span> <span class="n">clouduser</span><span class="err">@</span><span class="n">anewhost</span>
+</pre></div>
+
+
+<p>Since this is something that would certainly make my life convenient,
+I put together a small script called <a href="https://raw.github.com/larsks/virt-utils/master/virt-hosts">virt-hosts</a> that makes this
+possible.  You can find <a href="https://raw.github.com/larsks/virt-utils/master/virt-hosts">virt-hosts</a> in my <a href="https://raw.github.com/larsks/virt-utils/">virt-utils</a> GitHub
+repository:</p>
+<ul>
+<li>https://raw.github.com/larsks/virt-utils/master/virt-hosts</li>
+</ul>
+<p>Run by itself, with no options, <code>virt-hosts</code> will scan through your
+running domains for interfaces on the libvirt <code>default</code> network, look
+up those MAC addresses up in the corresponding <code>default.leases</code> file,
+and then generate a hosts file on <code>stdout</code> like this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">virt</span><span class="o">-</span><span class="n">hosts</span>
+<span class="mf">192.168.122.221</span> <span class="n">compute</span><span class="o">-</span><span class="n">tmp0</span><span class="o">-</span><span class="n">net0</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span> <span class="n">compute</span><span class="o">-</span><span class="n">tmp0</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span>
+<span class="mf">192.168.122.101</span> <span class="n">centos</span><span class="o">-</span><span class="mi">0</span><span class="o">-</span><span class="n">net0</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span> <span class="n">centos</span><span class="o">-</span><span class="mf">0.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span>
+<span class="mf">192.168.122.214</span> <span class="n">controller</span><span class="o">-</span><span class="n">tmp</span><span class="o">-</span><span class="n">net0</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span> <span class="n">controller</span><span class="o">-</span><span class="n">tmp</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span>
+</pre></div>
+
+
+<p>Each address will be assigned the name
+<code>&lt;domain_name&gt;-&lt;interface_name&gt;.&lt;network_name&gt;.virt</code>.  The first
+interface on the network will also be given the alias
+<code>&lt;domain_name&gt;.&lt;network_name&gt;.virt</code>, so a host with multiple
+interfaces on the same network would look like this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">virt</span><span class="o">-</span><span class="n">hosts</span>
+<span class="mf">192.168.122.221</span> <span class="n">host0</span><span class="o">-</span><span class="n">net0</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span> <span class="n">host0</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span>
+<span class="mf">192.168.122.110</span> <span class="n">host0</span><span class="o">-</span><span class="n">net1</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">virt</span>
+</pre></div>
+
+
+<p>Of course, this is only half the solution: having generated a hosts
+file we need to put it somewhere where your system can find it.</p>
+<h2>An aside: incron</h2>
+<p>Both of the following solutions rely on <a href="http://inotify.aiken.cz/?section=incron&amp;page=about&amp;lang=en">incron</a>, a tool that uses
+the Linux <a href="http://en.wikipedia.org/wiki/Inotify">inotify</a> subsystem to trigger scripts in reaction to
+events on file and directories.  In this case, we'll be using <code>incron</code>
+to monitor the dnsmasq <code>default.leases</code> file and firing off a script
+when it changes.</p>
+<p>You could accomplish the same thing using the <code>inotifywait</code> program
+from the <a href="https://github.com/rvoicilas/inotify-tools/wiki">inotify-tools</a> package and a small wrapper script, or you
+could hook up something to the libvirt events framework.</p>
+<h2>Using /etc/hosts</h2>
+<p>If you want to update your <code>/etc/hosts</code> file, you can place the
+following into a script called <code>update-virt-hosts</code> (somewhere in
+root's <code>PATH</code>) and run that via <a href="http://inotify.aiken.cz/?section=incron&amp;page=about&amp;lang=en">incron</a>:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3
+4
+5
+6
+7
+8</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+sed -i <span class="s1">&#39;/^# BEGIN VIRT HOSTS/,/^# END VIRT HOSTS/ d&#39;</span> /etc/hosts
+cat <span class="s">&lt;&lt;EOF &gt;&gt;/etc/hosts</span>
+<span class="s"># BEGIN VIRT HOSTS</span>
+<span class="s">$(virt-hosts)</span>
+<span class="s"># END VIRT HOSTS</span>
+<span class="s">EOF</span>
+</pre></div>
+</td></tr></table>
+
+<p>Make sure you have <code>incron</code> installed, and add the following to
+<code>/etc/incron.d/virt-hosts</code>:</p>
+<div class="highlight"><pre><span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">libvirt</span><span class="o">/</span><span class="n">dnsmasq</span><span class="o">/</span><span class="k">default</span><span class="p">.</span><span class="n">leases</span> <span class="n">IN_MODIFY</span> <span class="n">update</span><span class="o">-</span><span class="n">virt</span><span class="o">-</span><span class="n">hosts</span>
+</pre></div>
+
+
+<p>This will cause <code>incron</code> to run your <code>update-virt-hosts</code> script
+whenever it sees an <code>IN_MODIFY</code> event on the <code>default.leases</code> file.</p>
+<h2>Using NetworkManager + dnsmasq</h2>
+<p>I am running NetworkManager with the <code>dnsmasq</code> dns plugin. I created
+the file <code>/etc/NetworkManager/dnsmasq.d/virthosts</code> containing:</p>
+<div class="highlight"><pre><span class="n">addn</span><span class="o">-</span><span class="n">hosts</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">libvirt</span><span class="o">/</span><span class="n">dnsmasq</span><span class="o">/</span><span class="k">default</span><span class="p">.</span><span class="n">addnhosts</span>
+</pre></div>
+
+
+<p>This will cause the <code>dnsmasq</code> process started by <code>NetworkManager</code> to
+use that file as an additional hosts file.  I then installed the
+<code>incron</code> package and dropped the following in
+<code>/etc/incron.d/virt-hosts</code>:</p>
+<div class="highlight"><pre><span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">libvirt</span><span class="o">/</span><span class="n">dnsmasq</span><span class="o">/</span><span class="k">default</span><span class="p">.</span><span class="n">leases</span> <span class="n">IN_MODIFY</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">virt</span><span class="o">-</span><span class="n">hosts</span> <span class="o">-</span><span class="n">ur</span>
+</pre></div>
+
+
+<p>This has <code>incron</code> listen for changes to the <code>default.leases</code> file, and
+whenever it receives the <code>IN_MODIFY</code> event it runs <code>virt-hosts</code> with
+the <code>-u</code> (aka <code>--update</code>) and <code>-r</code> (aka <code>--reload-dnsmasq</code>) flags.
+Thef former causes <code>virt-hosts</code> to send output to
+<code>/var/lib/libvirt/dnsmasq/default.addnhosts</code> instead of <code>stdout</code>, and
+the latter does a <code>killall -HUP dnsmasq</code> after installing the new
+hosts file.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/index30.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+		<div class="nav-next"><a href="http://localhost:8000/index32.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

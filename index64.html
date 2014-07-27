@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/07/27/git-fetch-tags-remotes-and-more/">Fri 27 July 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/git/index.html" rel="tag">git</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/07/27/git-fetch-tags-remotes-and-more/" title="Permalink to Git fetch, tags, remotes, and more" rel="bookmark">Git fetch, tags, remotes, and more</a>
+		</h2>
+		<div class="entry-content">
+			<p>I’ve been playing around with Git, Puppet, and GPG verification of our
+Puppet configuration repository, and these are some random facts about
+Git that have come to light as part of the process.</p>
+<p>If you want to pull both changes <em>and</em> new tags from a remote
+repository, you can do this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">fetch</span>
+<span class="err">$</span> <span class="n">git</span> <span class="n">fetch</span> <span class="o">--</span><span class="n">tags</span>
+</pre></div>
+
+
+<p>Or you can do this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">fetch</span> <span class="o">--</span><span class="n">tags</span>
+<span class="err">$</span> <span class="n">git</span> <span class="n">fetch</span>
+</pre></div>
+
+
+<p>What’s the difference? <code>git fetch</code> will leave <code>FETCH_HEAD</code> pointing at
+the remote <code>HEAD</code>, whereas <code>git fetch --tags</code> will leave <code>FETCH_HEAD</code>
+pointing at the most recent tag.</p>
+<p>You can also do:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">remote</span> <span class="n">update</span>
+</pre></div>
+
+
+<p>Which unlike <code>git fetch</code> will pull down any new tags…but unlike
+<code>git fetch --tags</code> will not update tags that already exist in the local
+repository (<code>git remote update</code> also sets <code>FETCH_HEAD</code> to the remote
+<code>HEAD</code>).</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/index63.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+		<div class="nav-next"><a href="http://localhost:8000/index65.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

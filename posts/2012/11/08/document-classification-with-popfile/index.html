@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Document classification with POPFile</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/11/08/document-classification-with-popfile/">Thu 08 November 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/analytics/index.html" rel="tag">analytics</a>,  <a href="http://localhost:8000/tag/bayes/index.html" rel="tag">bayes</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/11/08/document-classification-with-popfile/" title="Permalink to Document classification with POPFile" rel="bookmark">Document classification with POPFile</a>
+		</h2>
+		<div class="entry-content">
+			<p>I recently embarked upon a quest to categorize a year's worth of
+trouble tickets (around 15000 documents total).  We wanted to see what
+sort of things are generating the most work for our helpdesk staff so
+that we can identify areas in which improvements would have the
+biggest impact.  One of my colleagues took a first pass at the data by
+manually categorizing the tickets based on their subject.  This
+resulted in some useful data, but in the end just over 40% of the
+tickets are still uncategorized.</p>
+<p>I was convinced that we could do better than that by taking into
+account the actual content of the trouble tickets.  This seemed like a
+good task for a <a href="https://en.wikipedia.org/wiki/Bayesian_spam_filtering">Bayesian filter</a> -- a tool that uses the
+statistical probability of words to categorize documents, and is most
+commonly used to differentiate "spam" from "non-spam" messages in
+email.  Because of this common use case, many of the tools out there
+are built explicitly to make binary (spam/not-spam) determinations,
+while for my purposes I needed something that was capable for sorting
+documents into multiple categories.</p>
+<p>I finally stumbled across <a href="http://getpopfile.org/">POPFile</a>, a tool that does almost exactly
+what I want.  Out of the box, POPFile is designed to act as a proxy
+between you and a POP mailbox, categorizing messages as your mail
+client retrieves them from a server.  While this is tremendously
+convenient for use categorizing email, it would be a sub-optimal
+interface for categorizing a collection of existing documents.</p>
+<p>Fortunately, POPFile offers an <a href="http://getpopfile.org/docs/popfilemodules:xmlrpc#popfile_xml-rpc_api">XML-RPC API</a> that allows programmatic
+interaction with the classification engine.  Usage is relatively
+simple; first you acquire a connection to the XML-RPC API and
+establish a session key:</p>
+<div class="highlight"><pre><span class="n">popfile</span> <span class="o">=</span> <span class="n">ServerProxy</span><span class="p">(</span><span class="s">&quot;http://localhost:8081&quot;</span><span class="p">)</span>
+<span class="n">api</span> <span class="o">=</span> <span class="n">popfile</span><span class="p">.</span><span class="n">POPFile</span><span class="p">.</span><span class="n">API</span>
+<span class="n">session</span> <span class="o">=</span> <span class="n">api</span><span class="p">.</span><span class="n">get_session_key</span><span class="p">(</span><span class="err">&#39;</span><span class="n">admin</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;&#39;</span><span class="p">)</span>
+</pre></div>
+
+
+<p>And then for each document, perform whatever transformations you wish
+to make (I'm building a minimal mail header) and then pass it to the
+<code>handle_message()</code> method:</p>
+<div class="highlight"><pre><span class="n">with</span> <span class="n">tempfile</span><span class="p">.</span><span class="n">NamedTemporaryFile</span><span class="p">()</span> <span class="n">as</span> <span class="n">fd</span><span class="o">:</span>
+    <span class="n">fd</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="err">&#39;</span><span class="n">Subject</span><span class="o">:</span> <span class="o">%</span><span class="n">s</span> <span class="p">[</span><span class="o">%</span><span class="n">s</span><span class="p">]</span><span class="err">\</span><span class="n">n</span><span class="err">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">id</span><span class="p">))</span>
+    <span class="n">fd</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="err">&#39;</span><span class="n">Message</span><span class="o">-</span><span class="n">ID</span><span class="o">:</span> <span class="o">&lt;%</span><span class="n">s</span><span class="err">@</span><span class="n">localhost</span><span class="o">&gt;</span><span class="err">\</span><span class="n">n</span><span class="err">&#39;</span> <span class="o">%</span> <span class="n">id</span><span class="p">)</span>
+    <span class="n">fd</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="sc">&#39;\n&#39;</span><span class="p">)</span>
+    <span class="n">fd</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="sc">&#39;\n&#39;</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+    <span class="n">fd</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="err">#</span> <span class="n">Pass</span> <span class="n">file</span> <span class="n">to</span> <span class="n">POPFile</span> <span class="n">service</span><span class="p">.</span>
+    <span class="n">bucket</span> <span class="o">=</span> <span class="n">api</span><span class="p">.</span><span class="n">handle_message</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">fd</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="err">&#39;</span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">null</span><span class="err">&#39;</span><span class="p">)</span>
+</pre></div>
+
+
+<p>The <code>handle_message()</code> call takes three parameters:</p>
+<ul>
+<li>The session key,</li>
+<li>A path to the input file,</li>
+<li>A path to the output file (POPFile returns the message with header
+  modifications)</li>
+</ul>
+<p>In this example, I'm passing <code>/dev/null</code> as the third parameter
+because I don't care about the data returned from POPFile.</p>
+<p>Initially, POPFile will not perform any categorization of documents.
+After manually categorizing just a few documents, two things happen:</p>
+<ul>
+<li>POPFile will start using any <a href="http://getpopfile.org/docs/glossary:amagnet">magnets</a> you have defined, which are
+  keyword rules that automatically assign documents to a given
+  category.</li>
+<li>For documents that do not match any magnet rules, POPFile will
+  attempt to categorize them using the Bayesian inference engine.</li>
+</ul>
+<p>POPFile provides a web interface for interacting with the
+classification engine.  In particular, this is where you go to
+manually classify documents, which further enhances the accuracy of
+the Bayesian filters.  I got bored after manually categorizing on the
+order of 300 or 400 tickets and just fed the rest of the collection
+into the filter.  I suspect the accuracy of the system is somewhere
+between 70% and 80% (based on POPFiles's estimates of accuracy while I
+was manually categorizing documents).</p>
+<p>For more information:</p>
+<ul>
+<li><a href="http://getpopfile.org/">POPFile</a> website</li>
+</ul>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

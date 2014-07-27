@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2013/04/08/did-arch-linux-eat-your-kvm/">Mon 08 April 2013</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/archlinux/index.html" rel="tag">archlinux</a>,  <a href="http://localhost:8000/tag/kvm/index.html" rel="tag">kvm</a>,  <a href="http://localhost:8000/tag/virtualization/index.html" rel="tag">virtualization</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2013/04/08/did-arch-linux-eat-your-kvm/" title="Permalink to Did Arch Linux eat your KVM?" rel="bookmark">Did Arch Linux eat your KVM?</a>
+		</h2>
+		<div class="entry-content">
+			<p>A recent update to <a href="https://www.archlinux.org/">Arch Linux</a> replaced the <code>qemu-kvm</code> package with
+an updated version of <code>qemu</code>.  A side effect of this change is that
+the <code>qemu-kvm</code> binary is no longer available, and any <code>libvirt</code> guests
+on your system utilizing that binary will no longer operate.  As is
+typical with Arch, there is no announcement about this incompatible
+change, and queries to <code>#archlinux</code> will be met with the knowledge,
+grace and decorum you would expect of that channel:</p>
+<div class="highlight"><pre><span class="mi">2013</span><span class="o">-</span><span class="mo">04</span><span class="o">-</span><span class="mi">08</span><span class="n">T18</span><span class="o">:</span><span class="mo">00</span> <span class="o">&lt;</span> <span class="n">gtmanfred</span><span class="o">&gt;</span> <span class="n">USE</span> <span class="o">--</span><span class="n">enable</span><span class="o">-</span><span class="n">kvm</span> <span class="k">for</span> <span class="n">fucks</span> <span class="n">sake</span>
+<span class="mi">2013</span><span class="o">-</span><span class="mo">04</span><span class="o">-</span><span class="mi">08</span><span class="n">T18</span><span class="o">:</span><span class="mo">00</span> <span class="o">&lt;</span> <span class="n">gtmanfred</span><span class="o">&gt;</span> <span class="n">DO</span> <span class="n">I</span> <span class="n">HAVE</span> <span class="n">TO</span> <span class="n">SAY</span> <span class="n">IT</span> <span class="n">AGAIN</span><span class="o">?</span>
+</pre></div>
+
+
+<p>The emulator binary is hardcoded into your domain in the <code>&lt;emulator&gt;</code>
+emulator, and typically looks something like this:</p>
+<div class="highlight"><pre><span class="nt">&lt;emulator&gt;</span>/usr/bin/qemu-kvm<span class="nt">&lt;/emulator&gt;</span>
+</pre></div>
+
+
+<p>In order to get your guests working again after the upgrade you'll
+need to replace this path with an appropriate selection from one of
+the other binaries provided by the <code>qemu</code> package, which include
+<code>qemu-system-i386</code> and <code>qemu-system-x86_64</code>.  You'll want to select
+the one appropriate for your <em>guest</em> architecture.  You can do this
+manually running <code>virsh edit</code> for each affected guest, but if you have
+more than a couple that rapidly becomes annoying.</p>
+<p>We can use <a href="https://en.wikipedia.org/wiki/XSLT">XSLT</a> to write a transformation that will set the
+<code>&lt;emulator&gt;</code> to an appropriate value, and we can set things up to run
+this automatically across all of our guests.  The following stylesheet
+will replace the <code>&lt;emulator&gt;</code> tag with a path to an appropriate <code>qemu</code> (by 
+extracting the <code>arch</code> attribute of the <code>domain/os/type</code> element:</p>
+<div class="highlight"><pre><span class="cp">&lt;?xml version=&quot;1.0&quot;?&gt;</span>
+<span class="nt">&lt;xsl:stylesheet</span> <span class="na">version=</span><span class="s">&quot;1.0&quot;</span> <span class="na">xmlns:xsl=</span><span class="s">&quot;http://www.w3.org/1999/XSL/Transform&quot;</span><span class="nt">&gt;</span>
+
+  <span class="c">&lt;!-- copy all elements verbatim... --&gt;</span>
+  <span class="nt">&lt;xsl:template</span> <span class="na">match=</span><span class="s">&quot;@*|node()&quot;</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;xsl:copy&gt;</span>
+      <span class="nt">&lt;xsl:apply-templates</span> <span class="na">select=</span><span class="s">&quot;@*|node()&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;/xsl:copy&gt;</span>
+  <span class="nt">&lt;/xsl:template&gt;</span>
+
+  <span class="c">&lt;!-- ...except for the &#39;emulator&#39; element. --&gt;</span>
+  <span class="nt">&lt;xsl:template</span> <span class="na">match=</span><span class="s">&quot;emulator&quot;</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;emulator&gt;</span>/usr/bin/qemu-system-<span class="nt">&lt;xsl:value-of</span> <span class="na">select=</span><span class="s">&quot;/*/os/type/@arch&quot;</span><span class="nt">/&gt;&lt;/emulator&gt;</span>
+  <span class="nt">&lt;/xsl:template&gt;</span>
+
+<span class="nt">&lt;/xsl:stylesheet&gt;</span>
+</pre></div>
+
+
+<p>We're going to apply this to all of our (inactive) guests via the
+<code>virsh edit</code> subcommand.  This command runs an editor (selected based
+on your <code>VISUAL</code> or <code>EDITOR</code> environment variables) on your domain
+XML.  We need to create an "editor" that will apply the above
+transformation to its input file.  Something like this will work:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3
+4
+5</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+<span class="nv">tmpfile</span><span class="o">=</span><span class="k">$(</span>mktemp <span class="s2">&quot;$1.patched.XXXXXX&quot;</span><span class="k">)</span>
+xsltproc -o <span class="s2">&quot;$tmpfile&quot;</span> patch-emulator.xsl <span class="s2">&quot;$1&quot;</span>
+mv <span class="s2">&quot;$tmpfile&quot;</span> <span class="s2">&quot;$1&quot;</span>
+</pre></div>
+</td></tr></table>
+
+<p>Assuming the above script has been saved as "patch-emulator.sh" (and
+made executable), we can run this across all of our inactive guests
+like this:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3
+4
+5
+6
+7
+8
+9</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+<span class="nv">VISUAL</span><span class="o">=</span>./patch-emulator.sh
+<span class="nb">export </span>VISUAL
+
+virsh list --inactive --name | <span class="k">while </span><span class="nb">read </span>vm; <span class="k">do</span>
+        <span class="o">[</span> <span class="s2">&quot;$vm&quot;</span> <span class="o">]</span> <span class="o">||</span> <span class="k">continue</span>
+<span class="k">        </span>virsh edit <span class="nv">$vm</span>
+<span class="k">done</span>
+</pre></div>
+</td></tr></table>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/index34.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+		<div class="nav-next"><a href="http://localhost:8000/index36.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged openssh</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>openssh</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2011/05/09/signing-data-with-ssh-agent/">Mon 09 May 2011</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/cryptography/index.html" rel="tag">cryptography</a>,  <a href="http://localhost:8000/tag/openssh/index.html" rel="tag">openssh</a>,  <a href="http://localhost:8000/tag/openssl/index.html" rel="tag">openssl</a>,  <a href="http://localhost:8000/tag/rsa/index.html" rel="tag">rsa</a>,  <a href="http://localhost:8000/tag/ssh/index.html" rel="tag">ssh</a>,  <a href="http://localhost:8000/tag/ssh-agent/index.html" rel="tag">ssh-agent</a>,  <a href="http://localhost:8000/tag/ssl/index.html" rel="tag">ssl</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2011/05/09/signing-data-with-ssh-agent/" title="Permalink to Signing data with ssh-agent" rel="bookmark">Signing data with ssh-agent</a>
+		</h2>
+		<div class="entry-content">
+			<p>This is follow-up to my previous post, <a href="http://blog.oddbit.com/2011/05/08/converting-openssh-public-keys/">Converting OpenSSH public keys</a>.</p>
+<p>OpenSSH allows one to use an <em>agent</em> that acts as a proxy to your private key. When using an agent -- particularly with agent forwarding enabled -- this allows you to authenticate to a remote host without having to (a) repeatedly type in your password or (b) expose an unencrypted private key to remote systems.</p>
+<p>If one is temtped to use SSH keys as authentication credentials outside of ssh, one would ideally be able to take advantage of the ssh agent for these same reasons.</p>
+<p>This article discusses what is required to programmatically interact with the agent and with the OpenSSL libraries for signing data and verifying signatures.</p>
+<h4>Signing data with ssh-agent</h4>
+<p>The SSH agent does not provide clients with direct access to an unencrypted private key. Rather, it will accept data from the client and return the signature of the SHA1 hash of the data.</p>
+<p>The agent communicates over a unix socket using the <a href="http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.agent?rev=HEAD;content-type=text%2Fplain">ssh agent protocol</a> defined in <a href="http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/authfd.h?rev=HEAD;content-type=text%2Fplain">authfd.h</a>. The Python <a href="http://www.lag.net/paramiko/">Paramiko</a> libary (a pure-python implementation of ssh) includes support for interacting with an ssh agent.</p>
+<p>Signing data is very simple:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">hashlib</span>
+<span class="n">import</span> <span class="n">paramiko</span><span class="p">.</span><span class="n">agent</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="err">&#39;</span><span class="n">something</span> <span class="n">to</span> <span class="n">sign</span><span class="err">&#39;</span>
+<span class="n">data_sha1</span> <span class="o">=</span> <span class="n">hashlib</span><span class="p">.</span><span class="n">sha1</span><span class="p">(</span><span class="n">data</span><span class="p">).</span><span class="n">digest</span><span class="p">()</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">paramiko</span><span class="p">.</span><span class="n">agent</span><span class="p">.</span><span class="n">Agent</span><span class="p">()</span>
+<span class="n">key</span> <span class="o">=</span> <span class="n">a</span><span class="p">.</span><span class="n">keys</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">d</span> <span class="o">=</span> <span class="n">key</span><span class="p">.</span><span class="n">sign_ssh_data</span><span class="p">(</span><span class="n">None</span><span class="p">,</span> <span class="n">data_sha1</span><span class="p">)</span>
+</pre></div>
+
+
+<p>Internally, the agent computes the SHA1 digest for the data, signs this using the selected key, and returns a <em>signature_blob</em> that varies depending on the key type in use. For an RSA signature, the result format is a series of (length, data) pairs, where the length is encoded as a four-byte unsigned integer. The response contains the following elements:</p>
+<ol>
+<li>algorithm name (ssh-rsa)</li>
+<li>rsa signature</li>
+</ol>
+<p>For example, after signing some data using a 1024-bit private key, the value returned from sign_ssh_data looked like this:</p>
+<div class="highlight"><pre><span class="mi">0000000</span><span class="o">:</span> <span class="mi">0000</span> <span class="mi">0007</span> <span class="mi">7373</span> <span class="mi">682</span><span class="n">d</span> <span class="mi">7273</span> <span class="mi">6100</span> <span class="mi">0000</span> <span class="mi">8027</span>  <span class="o">....</span><span class="n">ssh</span><span class="o">-</span><span class="n">rsa</span><span class="o">....</span><span class="s1">&#39;</span>
+<span class="s1">0000010: 953c 771c 5ee4 f4b0 9849 c061 0ac2 2adb  .&lt;w.^....I.a..*.</span>
+<span class="s1">0000020: b53d 2bcb a545 8dbb d582 05e5 a916 6490  .=+..E........d.</span>
+<span class="s1">0000030: 1b67 3210 9bfc c74d d0ad 5011 394b a3fe  .g2....M..P.9K..</span>
+<span class="s1">0000040: 96e2 910b bbfd 19cd 73e5 6720 503a 95e1  ........s.g P:..</span>
+<span class="s1">0000050: 5b8b 63c4 14a3 ec3d bf57 846e f0b4 e66c  [.c....=.W.n...l</span>
+<span class="s1">0000060: ce5d 6327 6055 b4e2 3c14 c13f 8303 4b1a  .]c&#39;</span><span class="err">`</span><span class="n">U</span><span class="o">..&lt;..?..</span><span class="n">K</span><span class="o">.</span>
+<span class="mi">0000070</span><span class="o">:</span> <span class="mi">7</span><span class="n">ce3</span> <span class="mi">9</span><span class="n">f33</span> <span class="mi">9</span><span class="n">e7c</span> <span class="mi">7</span><span class="n">ca4</span> <span class="n">a97b</span> <span class="mi">506</span><span class="n">d</span> <span class="n">fa0b</span> <span class="n">a39e</span>  <span class="o">|..</span><span class="mi">3</span><span class="o">.||..{</span><span class="n">Pm</span><span class="o">....</span>
+<span class="mi">0000080</span><span class="o">:</span> <span class="n">cb53</span> <span class="n">befc</span> <span class="n">d725</span> <span class="mi">9</span><span class="n">cd1</span> <span class="n">a8af</span> <span class="mi">6042</span> <span class="mi">5</span><span class="n">ac8</span> <span class="mi">01</span>    <span class="o">.</span><span class="na">S</span><span class="o">...%....</span><span class="err">`</span><span class="n">BZ</span><span class="o">..</span>
+</pre></div>
+
+
+<p>The first four bytes (0000 0007) are the length of the algorithm name (ssh-rsa). The next field is the length of the signature (0000 0080, or 128 bytes), followed by the signature data. This means we can extract the signature data like this:</p>
+<div class="highlight"><pre><span class="n">parts</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">while</span> <span class="n">d</span><span class="o">:</span>
+    <span class="n">len</span> <span class="o">=</span> <span class="k">struct</span><span class="p">.</span><span class="n">unpack</span><span class="p">(</span><span class="err">&#39;</span><span class="o">&gt;</span><span class="n">I</span><span class="err">&#39;</span><span class="p">,</span> <span class="n">d</span><span class="p">[</span><span class="o">:</span><span class="mi">4</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">bits</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="mi">4</span><span class="o">:</span><span class="n">len</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>
+    <span class="n">parts</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">bits</span><span class="p">)</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="n">len</span><span class="o">+</span><span class="mi">4</span><span class="o">:</span><span class="p">]</span>
+
+<span class="n">sig</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">open</span><span class="p">(</span><span class="err">&#39;</span><span class="n">signature</span><span class="err">&#39;</span><span class="p">,</span> <span class="sc">&#39;w&#39;</span><span class="p">).</span><span class="n">write</span><span class="p">(</span><span class="n">sig</span><span class="p">)</span>
+</pre></div>
+
+
+<h4>Signing the data with OpenSSL</h4>
+<h5>Using M2Crypto</h5>
+<p>You can accomplish the same thing using the <a href="http://sandbox.rulemaker.net/ngps/m2/">M2Crypto</a> library for Python like this:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">hashlib</span>
+<span class="n">import</span> <span class="n">M2Crypto</span><span class="p">.</span><span class="n">RSA</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="err">&#39;</span><span class="n">something</span> <span class="n">to</span> <span class="n">sign</span><span class="err">&#39;</span>
+<span class="n">data_sha1</span> <span class="o">=</span> <span class="n">hashlib</span><span class="p">.</span><span class="n">sha1</span><span class="p">(</span><span class="n">data</span><span class="p">).</span><span class="n">digest</span><span class="p">()</span>
+<span class="n">key</span> <span class="o">=</span> <span class="n">M2Crypto</span><span class="p">.</span><span class="n">RSA</span><span class="p">.</span><span class="n">load_key</span><span class="p">(</span><span class="err">&#39;</span><span class="n">testkey</span><span class="err">&#39;</span><span class="p">)</span>
+<span class="n">sig</span> <span class="o">=</span> <span class="n">key</span><span class="p">.</span><span class="n">sign</span><span class="p">(</span><span class="n">data_sha1</span><span class="p">)</span>
+<span class="n">open</span><span class="p">(</span><span class="err">&#39;</span><span class="n">signature</span><span class="err">&#39;</span><span class="p">,</span> <span class="sc">&#39;w&#39;</span><span class="p">).</span><span class="n">write</span><span class="p">(</span><span class="n">sig</span><span class="p">)</span>
+</pre></div>
+
+
+<p>This assumes that testkey is the private key file corresponding to the first key loaded into your agent in the previous example.</p>
+<h5>Using the command line</h5>
+<p>You can also generate an equivalent signature using the OpenSSL command line tools:</p>
+<div class="highlight"><pre><span class="n">echo</span> <span class="o">-</span><span class="n">n</span> <span class="err">&#39;</span><span class="n">something</span> <span class="n">to</span> <span class="n">sign</span><span class="err">&#39;</span> <span class="o">|</span>
+  <span class="n">openssl</span> <span class="n">sha1</span>  <span class="o">-</span><span class="n">binary</span> <span class="o">|</span>
+  <span class="n">openssl</span> <span class="n">pkeyutl</span> <span class="o">-</span><span class="n">sign</span> <span class="o">-</span><span class="n">inkey</span> <span class="n">testkey</span> <span class="o">-</span><span class="n">pkeyopt</span> <span class="n">digest</span><span class="o">:</span><span class="n">sha1</span> <span class="o">&gt;</span> <span class="n">signature</span>
+</pre></div>
+
+
+<p>Note that including -pkeyopt digest:sha1 is necessary to get a signature block that is compatible with the one returned by the ssh agent. The pkeyutl man page has this to say:</p>
+<blockquote>
+<p>In PKCS#1 padding if the message digest is not set then the supplied data is signed or verified directly instead of using a DigestInfo structure. If a digest is set then the a DigestInfo structure is used and its the length must correspond to the digest type.</p>
+</blockquote>
+<h4>Veryfying the data</h4>
+<p>You can verify the signature using the corresponding public key.</p>
+<h5>Using M2Crypto</h5>
+<p>This uses the <a href="http://sandbox.rulemaker.net/ngps/m2/">M2Crypto</a> module to verify the signature computed in the previous step:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">hashlib</span>
+<span class="n">import</span> <span class="n">M2Crypto</span><span class="p">.</span><span class="n">RSA</span>
+
+<span class="cp"># let&#39;s pretend that you&#39;ve read my previous blog post and have</span>
+<span class="cp"># created an &quot;sshkey&quot; module for reading the ssh public key format.</span>
+<span class="n">import</span> <span class="n">sshkey</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="err">&#39;</span><span class="n">something</span> <span class="n">to</span> <span class="n">sign</span><span class="err">&#39;</span>
+<span class="n">data_sha1</span> <span class="o">=</span> <span class="n">hashlib</span><span class="p">.</span><span class="n">sha1</span><span class="p">(</span><span class="n">data</span><span class="p">).</span><span class="n">digest</span><span class="p">()</span>
+
+<span class="cp"># read the signature generated in the previous step</span>
+<span class="n">sig</span> <span class="o">=</span> <span class="n">open</span><span class="p">(</span><span class="err">&#39;</span><span class="n">signature</span><span class="err">&#39;</span><span class="p">).</span><span class="n">read</span><span class="p">()</span>
+
+<span class="n">e</span><span class="p">,</span><span class="n">n</span> <span class="o">=</span> <span class="n">sshkey</span><span class="p">.</span><span class="n">load_rsa_pub_key</span><span class="p">(</span><span class="err">&#39;</span><span class="n">testkey</span><span class="p">.</span><span class="n">pub</span><span class="err">&#39;</span><span class="p">)</span>
+<span class="n">key</span> <span class="o">=</span> <span class="n">M2Crypto</span><span class="p">.</span><span class="n">RSA</span><span class="p">.</span><span class="n">new_pub_key</span><span class="p">((</span>
+    <span class="n">M2Crypto</span><span class="p">.</span><span class="n">m2</span><span class="p">.</span><span class="n">bn_to_mpi</span><span class="p">(</span><span class="n">M2Crypto</span><span class="p">.</span><span class="n">m2</span><span class="p">.</span><span class="n">hex_to_bn</span><span class="p">(</span><span class="n">hex</span><span class="p">(</span><span class="n">e</span><span class="p">)[</span><span class="mi">2</span><span class="o">:</span><span class="p">])),</span>
+    <span class="n">M2Crypto</span><span class="p">.</span><span class="n">m2</span><span class="p">.</span><span class="n">bn_to_mpi</span><span class="p">(</span><span class="n">M2Crypto</span><span class="p">.</span><span class="n">m2</span><span class="p">.</span><span class="n">hex_to_bn</span><span class="p">(</span><span class="n">hex</span><span class="p">(</span><span class="n">n</span><span class="p">)[</span><span class="mi">2</span><span class="o">:</span><span class="p">])),</span>
+    <span class="p">))</span>
+
+<span class="k">if</span> <span class="n">key</span><span class="p">.</span><span class="n">verify</span><span class="p">(</span><span class="n">data_sha1</span><span class="p">,</span> <span class="n">sig</span><span class="p">)</span><span class="o">:</span>
+  <span class="n">print</span> <span class="err">&#39;</span><span class="n">Verified</span><span class="o">!</span><span class="err">&#39;</span>
+<span class="nl">else:</span>
+  <span class="n">print</span> <span class="err">&#39;</span><span class="n">Failed</span><span class="o">!</span><span class="err">&#39;</span>
+</pre></div>
+
+
+<p>If you have converted the ssh public key into a standard format, you could do this instead:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">hashlib</span>
+<span class="n">import</span> <span class="n">M2Crypto</span><span class="p">.</span><span class="n">RSA</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="err">&#39;</span><span class="n">something</span> <span class="n">to</span> <span class="n">sign</span><span class="err">&#39;</span>
+<span class="n">data_sha1</span> <span class="o">=</span> <span class="n">hashlib</span><span class="p">.</span><span class="n">sha1</span><span class="p">(</span><span class="n">data</span><span class="p">).</span><span class="n">digest</span><span class="p">()</span>
+
+<span class="cp"># read the signature generated in the previous step</span>
+<span class="n">sig</span> <span class="o">=</span> <span class="n">open</span><span class="p">(</span><span class="err">&#39;</span><span class="n">signature</span><span class="err">&#39;</span><span class="p">).</span><span class="n">read</span><span class="p">()</span>
+
+<span class="n">key</span> <span class="o">=</span> <span class="n">M2Crypto</span><span class="p">.</span><span class="n">RSA</span><span class="p">.</span><span class="n">load_pub_key</span><span class="p">(</span><span class="err">&#39;</span><span class="n">testkey</span><span class="p">.</span><span class="n">pubssl</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">key</span><span class="p">.</span><span class="n">verify</span><span class="p">(</span><span class="n">data_sha1</span><span class="p">,</span> <span class="n">sig</span><span class="p">)</span><span class="o">:</span>
+  <span class="n">print</span> <span class="err">&#39;</span><span class="n">Verified</span><span class="o">!</span><span class="err">&#39;</span>
+<span class="nl">else:</span>
+  <span class="n">print</span> <span class="err">&#39;</span><span class="n">Failed</span><span class="o">!</span><span class="err">&#39;</span>
+</pre></div>
+
+
+<h5>Using OpenSSL</h5>
+<p>We can do the same thing on the command line, but we'll first need to convert the ssh public key into a format useful to OpenSSL. This is easy if you have the private key handy...which we do:</p>
+<div class="highlight"><pre><span class="n">openssl</span> <span class="n">rsa</span> <span class="o">-</span><span class="n">in</span> <span class="n">testkey</span> <span class="o">-</span><span class="n">pubout</span> <span class="o">&gt;</span> <span class="n">testkey</span><span class="p">.</span><span class="n">pubssl</span>
+</pre></div>
+
+
+<p>And now we can verify the signature:</p>
+<div class="highlight"><pre><span class="n">echo</span> <span class="err">&#39;</span><span class="n">something</span> <span class="n">to</span> <span class="n">sign</span><span class="err">&#39;</span> <span class="o">|</span>
+  <span class="n">openssl</span> <span class="n">sha1</span>  <span class="o">-</span><span class="n">binary</span> <span class="o">|</span>
+  <span class="n">openssl</span> <span class="n">pkeyutl</span> <span class="o">-</span><span class="n">verify</span> <span class="o">-</span><span class="n">sigfile</span> <span class="n">signature</span> \
+    <span class="o">-</span><span class="n">pubin</span> <span class="o">-</span><span class="n">inkey</span> <span class="n">testkey</span><span class="p">.</span><span class="n">pubssl</span> <span class="o">-</span><span class="n">pkeyopt</span> <span class="n">digest</span><span class="o">:</span><span class="n">sha1</span>
+</pre></div>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-next"><a href="http://localhost:8000/tag/openssh/index2.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

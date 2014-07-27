@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/upnp/rss/index.html" rel="self"></atom:link><lastBuildDate>Fri, 29 Jan 2010 00:00:00 -0500</lastBuildDate><item><title>Linux UPnP Gateway</title><link>http://localhost:8000/posts/2010/01/29/linux-upnp-gateway/</link><description>&lt;p&gt;Like many other folks out there, I have several computers in my house connected to the outside world via a Linux box acting as a NAT gateway. I often want to use application such as BitTorrent and Freenet, which require that a number of ports be forwarded from my external connection to the particular computer on which I happen to be working. It turns out there's a protocol for this, called &lt;a href="http://en.wikipedia.org/wiki/Universal_Plug_and_Play"&gt;UPnP&lt;/a&gt;. From Wikipedia:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Universal Plug and Play (UPnP) is a set of networking protocols
+promulgated by the UPnP Forum. The goals of UPnP are to allow
+devices to connect seamlessly and to simplify the implementation of
+networks in the home (data sharing, communications, and
+entertainment) and in corporate environments for simplified
+installation of computer components.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;The practical use of UPnP, from my perspective, is that it allows a device or application &lt;em&gt;inside&lt;/em&gt; the network to request specific ports to be forwarded on the gateway. This means that what used to be a manual process -- adding the necessary forwarding rules to my iptables configuration -- is now performed automatically, and only when necessary.&lt;/p&gt;
+&lt;p&gt;The &lt;a href="http://linux-igd.sourceforge.net/"&gt;Linux UPnP Internet Gateway Device&lt;/a&gt; project implements a Linux UPnP service. You can download the source from the project web page.&lt;/p&gt;
+&lt;p&gt;Using the gateway service is really simple:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;Start upnpd:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# /etc/init.d/upnpd&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Start your application. You will see messages like the following in syslog (if you are logging DEBUG level messages):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Aug&lt;/span&gt;  &lt;span class="mi"&gt;6&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt; &lt;span class="n"&gt;arcadia&lt;/span&gt; &lt;span class="n"&gt;upnpd&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;19816&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Failure&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt;
+  &lt;span class="nl"&gt;GateDeviceDeletePortMapping:&lt;/span&gt; &lt;span class="n"&gt;DeletePortMap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Proto&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;UDP&lt;/span&gt; &lt;span class="n"&gt;Port&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;57875&lt;/span&gt;
+&lt;span class="n"&gt;Aug&lt;/span&gt;  &lt;span class="mi"&gt;6&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt; &lt;span class="n"&gt;arcadia&lt;/span&gt; &lt;span class="n"&gt;upnpd&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;19816&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;AddPortMap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;DevUDN&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="nl"&gt;uuid:&lt;/span&gt;&lt;span class="mi"&gt;75802409&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;bccb&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;40e7&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;8e6&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fa095ecce13e&lt;/span&gt; &lt;span class="n"&gt;ServiceID&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;urn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;upnp&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;org&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;serviceId&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;WANIPConn1&lt;/span&gt;
+ &lt;span class="nl"&gt;RemoteHost:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;null&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;Prot&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;UDP&lt;/span&gt; &lt;span class="n"&gt;ExtPort&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;57875&lt;/span&gt; &lt;span class="n"&gt;Int&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mf"&gt;192.168.1.118.57875&lt;/span&gt;
+&lt;span class="n"&gt;Aug&lt;/span&gt;  &lt;span class="mi"&gt;6&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt; &lt;span class="n"&gt;arcadia&lt;/span&gt; &lt;span class="n"&gt;upnpd&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;19816&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Failure&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt;
+  &lt;span class="nl"&gt;GateDeviceDeletePortMapping:&lt;/span&gt; &lt;span class="n"&gt;DeletePortMap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Proto&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;UDP&lt;/span&gt; &lt;span class="n"&gt;Port&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;11657&lt;/span&gt;
+&lt;span class="n"&gt;Aug&lt;/span&gt;  &lt;span class="mi"&gt;6&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt; &lt;span class="n"&gt;arcadia&lt;/span&gt; &lt;span class="n"&gt;upnpd&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;19816&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;AddPortMap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;DevUDN&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="nl"&gt;uuid:&lt;/span&gt;&lt;span class="mi"&gt;75802409&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;bccb&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;40e7&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;8e6&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fa095ecce13e&lt;/span&gt; &lt;span class="n"&gt;ServiceID&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;urn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;upnp&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;org&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;serviceId&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;WANIPConn1&lt;/span&gt;
+  &lt;span class="nl"&gt;RemoteHost:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;null&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;Prot&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;UDP&lt;/span&gt; &lt;span class="n"&gt;ExtPort&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;11657&lt;/span&gt; &lt;span class="n"&gt;Int&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mf"&gt;192.168.1.118.11657&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;For each forwarding requested by the client, upnpd first attempts to remove the mapping and then creates a new rule. Exactly how upnp implements these rules on your system is controlled by &lt;code&gt;/etc/upnpd.conf&lt;/code&gt; -- if you want to use something other than &lt;em&gt;iptables&lt;/em&gt;, or use custom chains, this is where you would make your changes.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Look at your firewall rules. Upnpd modifies the &lt;em&gt;FORWARD&lt;/em&gt; chain in the &lt;em&gt;filter&lt;/em&gt; table and the &lt;em&gt;PREROUTING&lt;/em&gt; chain in the &lt;em&gt;nat&lt;/em&gt; table. You can change this behavior by editing &lt;code&gt;/etc/upnpd.conf&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;To see forwarding rules:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# iptables -nL FORWARD&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The rules might look something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Chain&lt;/span&gt; &lt;span class="n"&gt;FORWARD&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;policy&lt;/span&gt; &lt;span class="n"&gt;DROP&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;target&lt;/span&gt;     &lt;span class="n"&gt;prot&lt;/span&gt; &lt;span class="n"&gt;opt&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt;               &lt;span class="n"&gt;destination&lt;/span&gt;
+&lt;span class="n"&gt;ACCEPT&lt;/span&gt;     &lt;span class="n"&gt;udp&lt;/span&gt;  &lt;span class="o"&gt;--&lt;/span&gt;  &lt;span class="mf"&gt;0.0.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;            &lt;span class="mf"&gt;192.168.1.118&lt;/span&gt;       &lt;span class="n"&gt;udp&lt;/span&gt; &lt;span class="n"&gt;dpt&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;57875&lt;/span&gt;
+&lt;span class="n"&gt;ACCEPT&lt;/span&gt;     &lt;span class="n"&gt;udp&lt;/span&gt;  &lt;span class="o"&gt;--&lt;/span&gt;  &lt;span class="mf"&gt;0.0.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;            &lt;span class="mf"&gt;192.168.1.118&lt;/span&gt;       &lt;span class="n"&gt;udp&lt;/span&gt; &lt;span class="n"&gt;dpt&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;11657&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;To see prerouting rules:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# iptables -t nat -vnL PREROUTING&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The rules might look something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Chain&lt;/span&gt; &lt;span class="n"&gt;PREROUTING&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;policy&lt;/span&gt; &lt;span class="n"&gt;ACCEPT&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;target&lt;/span&gt;     &lt;span class="n"&gt;prot&lt;/span&gt; &lt;span class="n"&gt;opt&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt;               &lt;span class="n"&gt;destination&lt;/span&gt;
+&lt;span class="n"&gt;DNAT&lt;/span&gt;       &lt;span class="n"&gt;udp&lt;/span&gt;  &lt;span class="o"&gt;--&lt;/span&gt;  &lt;span class="mf"&gt;0.0.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;            &lt;span class="mf"&gt;0.0.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;           &lt;span class="n"&gt;udp&lt;/span&gt; &lt;span class="n"&gt;dpt&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;11657&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mf"&gt;192.168.1.118&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;11657&lt;/span&gt;
+&lt;span class="n"&gt;DNAT&lt;/span&gt;       &lt;span class="n"&gt;udp&lt;/span&gt;  &lt;span class="o"&gt;--&lt;/span&gt;  &lt;span class="mf"&gt;0.0.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;            &lt;span class="mf"&gt;0.0.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;           &lt;span class="n"&gt;udp&lt;/span&gt; &lt;span class="n"&gt;dpt&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;57875&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mf"&gt;192.168.1.118&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;57875&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Upnpd will delete the mappings when they expire. The expiration time may be set by the client, or, if the client specifies no expiration, than by the "duration" configuration item in /etc/upnpd.conf.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h1&gt;Configuration file&lt;/h1&gt;
+&lt;p&gt;The upnpd configuration file (&lt;code&gt;/etc/upnpd.conf&lt;/code&gt;) allows you to change various aspects of upnpd's behavior. Of particular interest:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;insert_forward_rules&lt;/code&gt;&lt;br /&gt;
+  Default: &lt;code&gt;yes&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Whether or not upnpd needs to create entries in the &lt;code&gt;FORWARD&lt;/code&gt; chain of the &lt;code&gt;filter&lt;/code&gt; table. If your &lt;code&gt;FORWARD&lt;/code&gt; chain has a policy of &lt;code&gt;DROP&lt;/code&gt; you need set to yes.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;forward_chain_name&lt;/code&gt;&lt;br /&gt;
+  Default: &lt;code&gt;FORWARD&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Normally, upnpd creates entries in the &lt;code&gt;FORWARD&lt;/code&gt; chain. If you have a more advanced firewall setup this may not be the appropriate place to make changes. If you enter a custom name here, you will need to create the corresponding chain:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;iptables&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;N&lt;/span&gt; &lt;span class="n"&gt;my&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;forward&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;chain&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You will also need to call this chain from the &lt;em&gt;FORWARD&lt;/em&gt; chain:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;iptables&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="n"&gt;FORWARD&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;j&lt;/span&gt; &lt;span class="n"&gt;my&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;forward&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;chain&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;prerouting_chain_name&lt;/code&gt;&lt;br /&gt;
+  Default: &lt;code&gt;PREROUTING&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Like &lt;code&gt;forward&lt;/code&gt;chain&lt;code&gt;name&lt;/code&gt;, but for entries in the &lt;code&gt;nat&lt;/code&gt; table.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1&gt;Security considerations&lt;/h1&gt;
+&lt;p&gt;Consider the following, from the &lt;a href="http://linux-igd.sourceforge.net/documentation.php"&gt;Linux IGD documentation&lt;/a&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;UPnP version 1.0, on which this program is based, is inherently flawed...what appears to have happened is that in Microsoft's first UPnP implementation they weren't concerned with security .... Simply all they wanted was connectivity.... The UPnP server, by itself, does no security checking. If it recieves a UPnP request to add a portmapping for some ip address inside the firewall, it just does it. This program will attempt to verify the source ip contained in the UPnP request against the source ip of the actual packet, but as always, these can be forged. The UPnP server makes no attempt to verify this connection with the caller, and therefore it just assumes that whoever asked is the person really wanting it.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;In other words, in the battle between security and convenience, UPnP is weighs in heavily on the convenience side. You will have to decide whether this meets your particular requirements.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Fri, 29 Jan 2010 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2010-01-29:posts/2010/01/29/linux-upnp-gateway/</guid><category>networking</category><category>peertopeer</category><category>linux</category><category>upnp</category></item></channel></rss>

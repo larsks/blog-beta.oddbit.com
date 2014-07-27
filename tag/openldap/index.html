@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged openldap</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>openldap</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2010/02/16/merging-directories-with-openldaps-meta-backend/">Tue 16 February 2010</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/active_directory/index.html" rel="tag">active_directory</a>,  <a href="http://localhost:8000/tag/ldap/index.html" rel="tag">ldap</a>,  <a href="http://localhost:8000/tag/meta/index.html" rel="tag">meta</a>,  <a href="http://localhost:8000/tag/openldap/index.html" rel="tag">openldap</a>,  <a href="http://localhost:8000/tag/proxy/index.html" rel="tag">proxy</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2010/02/16/merging-directories-with-openldaps-meta-backend/" title="Permalink to Merging directories with OpenLDAP's Meta backend" rel="bookmark">Merging directories with OpenLDAP's Meta backend</a>
+		</h2>
+		<div class="entry-content">
+			<p>This document provides an example of using OpenLDAP's meta backend to provide a unified view of two distinct LDAP directory trees. I was frustrated by the lack of simple examples available when I went looking for information on this topic, so this is my attempt to make life easier for the next person looking to do the same thing.</p>
+<p>The particular use case that motiviated my interest in this topic was the need to configure web applications to (a) authenticate against an existing Active Directory server while (b) also allowing new accounts to be provisioned quickly and without granting any access in the AD environment. A complicating factor is that the group managing the AD server(s) was not the group implementing the web applications.</p>
+<h1>Assumptions</h1>
+<p>I'm making several assumptions while writing this document:</p>
+<ul>
+<li>You have root access on your system and are able to modify files in /etc/openldap and elsewhere on the filesystem.</li>
+<li>You are somewhat familiar with LDAP.</li>
+<li>You are somewhat familiar with OpenLDAP.</li>
+</ul>
+<h1>Set up backend directories</h1>
+<h2>Configure slapd</h2>
+<p>We'll first create two "backend" LDAP directories. These will represent the directories you're trying to merge. For the purposes of this example we'll use the ldif backend, which stores data in LDIF format on the filesystem. This is great for testing (it's simple and easy to understand), but not so great for performance.</p>
+<p>We define one backend like this in /etc/openldap/slapd-be-1.conf:</p>
+<div class="highlight"><pre><span class="n">database</span>        <span class="n">ldif</span>
+<span class="n">suffix</span>          <span class="s">&quot;ou=backend1&quot;</span>
+<span class="n">directory</span>       <span class="s">&quot;/var/lib/ldap/backend1&quot;</span>
+<span class="n">rootdn</span>          <span class="s">&quot;cn=ldif-admin,ou=backend1&quot;</span>
+<span class="n">rootpw</span>          <span class="s">&quot;LDIF&quot;</span>
+</pre></div>
+
+
+<p>And a second backend like this in /etc/openldap/slapd-be-2.conf:</p>
+<div class="highlight"><pre><span class="n">database</span>        <span class="n">ldif</span>
+<span class="n">suffix</span>          <span class="s">&quot;ou=backend2&quot;</span>
+<span class="n">directory</span>       <span class="s">&quot;/var/lib/ldap/backend2&quot;</span>
+<span class="n">rootdn</span>          <span class="s">&quot;cn=ldif-admin,ou=backend2&quot;</span>
+<span class="n">rootpw</span>          <span class="s">&quot;LDIF&quot;</span>
+</pre></div>
+
+
+<p>Now, we need to load these configs into the main slapd configuration file. Open slapd.conf, and look for the following comment:</p>
+<div class="highlight"><pre><span class="c">#######################################################################</span>
+<span class="c"># ldbm and/or bdb database definitions</span>
+<span class="c">#######################################################################</span>
+</pre></div>
+
+
+<p>Remove anything below this comment and then add the following lines:</p>
+<div class="highlight"><pre><span class="n">include</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">openldap</span><span class="o">/</span><span class="n">slapd</span><span class="o">-</span><span class="n">be</span><span class="o">-</span><span class="mf">1.</span><span class="n">conf</span>
+<span class="n">include</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">openldap</span><span class="o">/</span><span class="n">slapd</span><span class="o">-</span><span class="n">be</span><span class="o">-</span><span class="mf">2.</span><span class="n">conf</span>
+</pre></div>
+
+
+<h2>Start up slapd</h2>
+<p>Start up your LDAP service:</p>
+<div class="highlight"><pre><span class="c"># slapd -f slapd.conf -h ldap://localhost/</span>
+</pre></div>
+
+
+<p>And check to make sure it's running:</p>
+<div class="highlight"><pre><span class="cp"># ps -fe | grep slapd</span>
+<span class="n">root</span> <span class="mi">15087</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">22</span><span class="o">:</span><span class="mi">48</span> <span class="o">?</span> <span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span> <span class="n">slapd</span> <span class="o">-</span><span class="n">f</span> <span class="n">slapd</span><span class="p">.</span><span class="n">conf</span> <span class="o">-</span><span class="n">h</span> <span class="n">ldap</span><span class="o">:</span><span class="c1">//localhost/</span>
+</pre></div>
+
+
+<h2>Populate backends with sample data</h2>
+<p>We need to populate the directories with something to query.</p>
+<p>Put this in backend1.ldif:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">ou</span><span class="o">=</span><span class="n">backend1</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">top</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">organizationalUnit</span>
+<span class="n">ou</span><span class="o">:</span> <span class="n">backend1</span>
+
+<span class="n">dn</span><span class="o">:</span> <span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">backend1</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">top</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">organizationalUnit</span>
+<span class="n">ou</span><span class="o">:</span> <span class="n">people</span>
+
+<span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">backend1</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">inetOrgPerson</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">givenName</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">sn</span><span class="o">:</span> <span class="n">Somebodyson</span>
+<span class="n">mail</span><span class="o">:</span> <span class="n">user1</span><span class="err">@</span><span class="n">example</span><span class="o">.</span><span class="na">com</span>
+</pre></div>
+
+
+<p>And this in backend2.ldif:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">ou</span><span class="o">=</span><span class="n">backend2</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">top</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">organizationalUnit</span>
+<span class="n">ou</span><span class="o">:</span> <span class="n">backend2</span>
+
+<span class="n">dn</span><span class="o">:</span> <span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">backend2</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">top</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">organizationalUnit</span>
+<span class="n">ou</span><span class="o">:</span> <span class="n">people</span>
+
+<span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user2</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">backend2</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">inetOrgPerson</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">user2</span>
+<span class="n">givenName</span><span class="o">:</span> <span class="n">user2</span>
+<span class="n">sn</span><span class="o">:</span> <span class="n">Somebodyson</span>
+<span class="n">mail</span><span class="o">:</span> <span class="n">user2</span><span class="err">@</span><span class="n">example</span><span class="o">.</span><span class="na">com</span>
+</pre></div>
+
+
+<p>And then load the data into the backends:</p>
+<div class="highlight"><pre><span class="n">ldapadd</span> <span class="o">-</span><span class="n">x</span> <span class="o">-</span><span class="n">H</span> <span class="n">ldap</span><span class="o">:</span><span class="c1">//localhost -D cn=ldif-admin,ou=backend1 \</span>
+<span class="c1">  -w LDIF -f backend1.ldif</span>
+</pre></div>
+
+
+<p>And:</p>
+<div class="highlight"><pre><span class="n">ldapadd</span> <span class="o">-</span><span class="n">x</span> <span class="o">-</span><span class="n">H</span> <span class="n">ldap</span><span class="o">:</span><span class="c1">//localhost -D cn=ldif-admin,ou=backend2 \</span>
+<span class="c1">  -w LDIF -f backend2.ldif</span>
+</pre></div>
+
+
+<p>You can verify that the data loaded correctly by issuing a query to the backends. E.g.:</p>
+<div class="highlight"><pre><span class="n">ldapsearch</span> <span class="o">-</span><span class="n">x</span> <span class="o">-</span><span class="n">H</span> <span class="n">ldap</span><span class="o">:</span><span class="c1">//localhost -b ou=backend1 -LLL</span>
+</pre></div>
+
+
+<p>This should give you something that looks very much like the contents of backend1.ldif. You can do the same thing for backend2.</p>
+<h1>Set up meta database</h1>
+<p>We're now going to configure OpenLDAP's meta backend to merge the two directory trees. Complete documentation for the meta backend can be found in the <a href="http://www.openldap.org/software/man.cgi?query=slapd-meta&amp;apropos=0&amp;sektion=0&amp;manpath=OpenLDAP+2.4-Release&amp;format=html">slapd-meta man page</a>.</p>
+<p>Put the following into a file called slapd-frontend.conf (we'll discuss the details in moment):</p>
+<div class="highlight"><pre><span class="n">database</span>        <span class="n">meta</span>
+<span class="n">suffix</span>          <span class="s">&quot;dc=example,dc=com&quot;</span>
+
+<span class="n">uri</span>             <span class="s">&quot;ldap://localhost/ou=backend1,dc=example,dc=com&quot;</span>
+<span class="n">suffixmassage</span>   <span class="s">&quot;ou=backend1,dc=example,dc=com&quot;</span> <span class="s">&quot;ou=backend1&quot;</span>
+
+<span class="n">uri</span>             <span class="s">&quot;ldap://localhost/ou=backend2,dc=example,dc=com&quot;</span>
+<span class="n">suffixmassage</span>   <span class="s">&quot;ou=backend2,dc=example,dc=com&quot;</span> <span class="s">&quot;ou=backend2&quot;</span>
+</pre></div>
+
+
+<p>And then add to slapd.conf:</p>
+<div class="highlight"><pre><span class="n">include</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">openldap</span><span class="o">/</span><span class="n">slapd</span><span class="o">-</span><span class="n">frontend</span><span class="p">.</span><span class="n">conf</span>
+</pre></div>
+
+
+<p>Restart slapd. Let's do a quick search to see exactly what we've accomplished:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">ldapsearch</span> <span class="o">-</span><span class="n">x</span> <span class="o">-</span><span class="n">H</span> <span class="err">&#39;</span><span class="n">ldap</span><span class="o">:</span><span class="c1">//localhost/&#39; \</span>
+<span class="c1">  -b dc=example,dc=com objectclass=inetOrgPerson -LLL</span>
+<span class="nl">dn:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="p">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="p">,</span><span class="n">ou</span><span class="o">=</span><span class="n">backend1</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="n">example</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="nl">objectClass:</span> <span class="n">inetOrgPerson</span>
+<span class="nl">cn:</span> <span class="n">user1</span>
+<span class="nl">givenName:</span> <span class="n">user1</span>
+<span class="nl">sn:</span> <span class="n">Somebodyson</span>
+<span class="nl">mail:</span> <span class="n">user1</span><span class="err">@</span><span class="n">example</span><span class="p">.</span><span class="n">com</span>
+
+<span class="nl">dn:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user2</span><span class="p">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="p">,</span><span class="n">ou</span><span class="o">=</span><span class="n">backend2</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="n">example</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="nl">objectClass:</span> <span class="n">inetOrgPerson</span>
+<span class="nl">cn:</span> <span class="n">user2</span>
+<span class="nl">givenName:</span> <span class="n">user2</span>
+<span class="nl">sn:</span> <span class="n">Somebodyson</span>
+<span class="nl">mail:</span> <span class="n">user2</span><span class="err">@</span><span class="n">example</span><span class="p">.</span><span class="n">com</span>
+</pre></div>
+
+
+<p>As you can see from the output above, a single query is now returning results from both backends, merged into the dc=example,dc=com hierarchy.</p>
+<h2>A closer look</h2>
+<p>Let's take a closer look at the meta backend configuration.</p>
+<div class="highlight"><pre><span class="n">database</span>        <span class="n">meta</span>
+<span class="n">suffix</span>          <span class="s">&quot;dc=example,dc=com&quot;</span>
+</pre></div>
+
+
+<p>The database statement begins a new database definition. The suffix statement identifies the namespace that will be served by this particular database.</p>
+<p>Here is the proxy for backend1 (the entry for backend2 is virtually identical):</p>
+<div class="highlight"><pre><span class="n">uri</span>             <span class="s">&quot;ldap://localhost/ou=backend1,dc=example,dc=com&quot;</span>
+<span class="n">suffixmassage</span>   <span class="s">&quot;ou=backend1,dc=example,dc=com&quot;</span> <span class="s">&quot;ou=backend1&quot;</span>
+</pre></div>
+
+
+<p>The uri statement defines the host (and port) serving the target directory tree. The full syntax of the uri statement is described in the <a href="http://www.openldap.org/software/man.cgi?query=slapd-meta&amp;apropos=0&amp;sektion=0&amp;manpath=OpenLDAP+2.4-Release&amp;format=html">slapd-meta man page</a>; what we have here is a very simple example. The <em>naming context</em> of the URI must fall within the namespace defined in the suffix statement at the beginning of the database definition.</p>
+<p>The suffixmassage statement performs simple rewriting on distinguished names. It directs <em>slapd</em> to replace ou=backend1,dc=example,dc=com with ou=backend1 when communicating with the backend directory (and vice-versa).</p>
+<p>You can perform simple rewriting of attribute and object classes with the map statement. For example, if backend1 used a sAMAccountName attribute and our application was expecting a uid attribute, we could add this after the suffixmassage statement:</p>
+<div class="highlight"><pre><span class="n">map</span> <span class="n">attribute</span> <span class="n">uid</span> <span class="n">sAMAccountName</span>
+</pre></div>
+
+
+<h1>Conclusion</h1>
+<p>The sample configuration files, data, and code referenced in this post are available online in <a href="http://github.com/larsks/OpenLDAP-Metadirectory-Example">a github repository</a>:</p>
+<blockquote>
+<p><a href="http://github.com/larsks/OpenLDAP-Metadirectory-Example">http://github.com/larsks/OpenLDAP-Metadirectory-Example</a></p>
+</blockquote>
+<p>I hope you've found this post useful, or at least informative. If you have any comments or questions regarding this post, please log them as issues on GitHub. This will make them easier for me to track.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

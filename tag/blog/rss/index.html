@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/blog/rss/index.html" rel="self"></atom:link><lastBuildDate>Fri, 22 Nov 2013 00:00:00 -0500</lastBuildDate><item><title>Automatic maintenance of tag feeds</title><link>http://localhost:8000/posts/2013/11/22/automatic-maintenance-of-tag-feeds/</link><description>&lt;p&gt;I recently added some scripts to automatically generate tag feeds for
+my blog when pushing new content.  I'm using GitHub Pages to publish
+everything, so it seemed easiest to make tag generation part of a
+&lt;code&gt;pre-push&lt;/code&gt; hook (new in Git 1.8.2).  This hook is run automatically as
+part of the &lt;code&gt;git push&lt;/code&gt; operation, so it's the perfect place to insert
+generated content that must be kept in sync with posts on the blog.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;h2&gt;Keeping things in sync&lt;/h2&gt;
+&lt;p&gt;The &lt;code&gt;_posts&lt;/code&gt; directory of my blog is a &lt;a href="http://git-scm.com/book/en/Git-Tools-Submodules"&gt;git submodule&lt;/a&gt;, which means
+it gets updated and pushed asynchronously with respect to the main
+repository.  We want to make sure that we don't regenerate the tag
+feeds if there are either uncomitted changes in &lt;code&gt;_posts&lt;/code&gt; &lt;em&gt;or&lt;/em&gt; if there
+are &lt;em&gt;unpushed&lt;/em&gt; changes in &lt;code&gt;_posts&lt;/code&gt;: in either situation, we could
+generate a tag feed for tags that weren't actually used in any
+published posts.&lt;/p&gt;
+&lt;p&gt;The following checks for any uncomitted changes in &lt;code&gt;_posts&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;diff&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;files&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;quiet&lt;/span&gt; &lt;span class="n"&gt;_posts&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;then&lt;/span&gt;
+  &lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;posts are out of sync (skipping tag maintenance)&amp;quot;&lt;/span&gt;
+  &lt;span class="n"&gt;exit&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+&lt;span class="n"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This will abort the tag feed generation if any of the following is
+true:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;_posts&lt;/code&gt; has uncomitted changes&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_posts&lt;/code&gt; has new, untracked content&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_posts&lt;/code&gt; is at a revision that differs from the last comitted
+  revision in the parent repository.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This still leaves one possible failure mode: if we commit all changes
+in &lt;code&gt;_posts&lt;/code&gt;, and then commit the updated &lt;code&gt;_posts&lt;/code&gt; revision in the
+parent repository, all of the previous checks will pass...but since we
+haven't pushed the &lt;code&gt;_posts&lt;/code&gt; repository, we could still be pushing tags
+that don't match up with published posts.&lt;/p&gt;
+&lt;p&gt;The following check will prevent this situation by checking if the
+repository differs from the upstream branch:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="n"&gt;_posts&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;diff&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;quiet&lt;/span&gt; &lt;span class="n"&gt;origin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;posts&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt; &lt;span class="n"&gt;then&lt;/span&gt;
+  &lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;posts are out of sync (skipping tag maintenance)&amp;quot;&lt;/span&gt;
+  &lt;span class="n"&gt;exit&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+&lt;span class="n"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Generating tag feeds&lt;/h2&gt;
+&lt;p&gt;In order to prevent stale tags, we need to delete and regenerate all
+the tag feeds.  Cleaning up the existing tag feeds is taken care of by
+the &lt;code&gt;cleantagfeeds&lt;/code&gt; script:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;cleaning tag feeds&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;_oddbit&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;cleantagfeeds&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Which is really just a wrapper for the following &lt;code&gt;find&lt;/code&gt; commands:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3
+4
+5
+6
+7&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="c"&gt;# Delete tag feeds unless there is a `.keep` file in the&lt;/span&gt;
+&lt;span class="c"&gt;# same directory.&lt;/span&gt;
+find tag/* -name index.xml &lt;span class="se"&gt;\&lt;/span&gt;
+  -execdir sh -c &lt;span class="s1"&gt;&amp;#39;test -f .keep || rm -f index.xml&amp;#39;&lt;/span&gt; &lt;span class="se"&gt;\;&lt;/span&gt;
+find tag/* -type d -delete
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;This will preserve any tag feeds that have a corresponding &lt;code&gt;.keep&lt;/code&gt;
+file (just in case we've done something special that requires manual
+intervention) and deletes everything else.&lt;/p&gt;
+&lt;p&gt;Generating the tag feeds is taken care of by the &lt;code&gt;gentagfeeds&lt;/code&gt;
+script:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;generating tag feeds&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;_oddbit&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;gentagfeeds&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This is a Python program that iterates over all the files in &lt;code&gt;_posts&lt;/code&gt;,
+reads in the YAML frontmatter from each one, and then generates a feed
+file for each tag using a template.&lt;/p&gt;
+&lt;p&gt;Finally, we need to add any changes to the repository.  We
+unilaterally add the &lt;code&gt;tags/&lt;/code&gt; directory:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;add&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="n"&gt;tag&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And then see if that got us anything:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;diff&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;quiet&lt;/span&gt; &lt;span class="n"&gt;HEAD&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="n"&gt;tag&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;then&lt;/span&gt;
+  &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;commit&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;automatic&lt;/span&gt; &lt;span class="n"&gt;tag&lt;/span&gt; &lt;span class="n"&gt;update&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;tag&lt;/span&gt;
+&lt;span class="n"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;At this point, we've regenerated all the tag feeds and committed any
+new or modified tag feeds to the repository, which will get published
+to GitHub as part of the current &lt;code&gt;push&lt;/code&gt; operation.&lt;/p&gt;
+&lt;p&gt;The actual feed templates look like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;---&lt;/span&gt;
+&lt;span class="nl"&gt;layout:&lt;/span&gt; &lt;span class="n"&gt;rss&lt;/span&gt;
+&lt;span class="nl"&gt;exclude:&lt;/span&gt; &lt;span class="nb"&gt;true&lt;/span&gt;
+&lt;span class="nl"&gt;tags:&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="p"&gt;{{&lt;/span&gt;&lt;span class="n"&gt;tag&lt;/span&gt;&lt;span class="p"&gt;}}&lt;/span&gt;
+&lt;span class="o"&gt;---&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I'm using a modified version of &lt;a href="https://github.com/thedereck/gh-pages-blog/"&gt;gh-pages-blog&lt;/a&gt; in which I have
+modified &lt;code&gt;_layouts/rss.xml&lt;/code&gt; to optionally filter posts by tag using
+the following template code:&lt;/p&gt;
+&lt;p _="%" endfor="endfor"&gt;{% raw %}
+      .
+      .
+      .
+            {% for p in site.posts %}
+        {% if page contains 'tags' %}
+          {% assign selected = false %}
+          {% for t in p.tags %}
+            {% if page.tags contains t %}
+              {% assign selected = true %}
+            {% endif %}&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;      &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;selected&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="nb"&gt;false&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+      &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="k"&gt;continue&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+      &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="n"&gt;endif&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="n"&gt;endif&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+  &lt;span class="p"&gt;.&lt;/span&gt;
+  &lt;span class="p"&gt;.&lt;/span&gt;
+  &lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;{% endraw %}&lt;/p&gt;
+&lt;p&gt;For each post on the site (&lt;code&gt;site.posts&lt;/code&gt;), this checks for any overlap
+between the tags in the post and the tags selected in the tag feed.
+While the automatic feeds use only a single tag, this also makes it
+possible to create feeds that follow multiple tags.&lt;/p&gt;
+&lt;p&gt;All of the code used to implement this is available in the &lt;a href="http://github.com/larsks/blog.oddbit.com/"&gt;GitHub
+repository for this blog&lt;/a&gt;.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Fri, 22 Nov 2013 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2013-11-22:posts/2013/11/22/automatic-maintenance-of-tag-feeds/</guid><category>blog</category><category>git</category></item><item><title>Enabled blog comments</title><link>http://localhost:8000/posts/2013/11/18/enabled-blog-comments/</link><description>&lt;p&gt;I've enabled blog comments using &lt;a href="http://disqus.com/"&gt;Disqus&lt;/a&gt;.  This is something of an
+experiment, since (a) I'm not really happy with how Disqus is handling
+user registration these days and (b) I don't know that I have the time
+to moderate anything.  But we'll see.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Mon, 18 Nov 2013 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2013-11-18:posts/2013/11/18/enabled-blog-comments/</guid><category>blog</category></item><item><title>Moving to GitHub</title><link>http://localhost:8000/posts/2013/11/13/moving-to-github/</link><description>&lt;p&gt;This blog has been hosted on &lt;a href="http://scriptogr.am/"&gt;scriptogram&lt;/a&gt; for the past year or so.
+Unfortunately, while I like the publish-via-Dropbox mechanism, there
+have been enough problems recently that I've finally switched over to
+using &lt;a href="http://pages.github.com/"&gt;GitHub Pages&lt;/a&gt; for hosting.  I've been thinking about doing
+this for a while, but the things that finally pushed me to make the
+change were:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Sync problems that would prevent new posts from appearing (and that
+  at least once caused posts to disappear).&lt;/li&gt;
+&lt;li&gt;Lack of any response to bug reports by the site maintainers.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;A benefit of the publish-via-Dropbox mechanism is, of course, that I
+already had all the data and didn't need to go through any sort of
+export process.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;h2&gt;Fixing metadata&lt;/h2&gt;
+&lt;p&gt;Like &lt;a href="http://scriptogr.am/"&gt;scriptogram&lt;/a&gt;, &lt;a href="http://pages.github.com/"&gt;GitHub Pages&lt;/a&gt; is also a Markdown-based
+solution.  GitHub uses &lt;a href="http://jekyllrb.com/"&gt;Jekyll&lt;/a&gt; to render Markdown to HTML, which
+requires some metadata at the beginning of each post.  On
+&lt;a href="http://scriptogr.am/"&gt;scriptogram&lt;/a&gt; the file headers looked like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Title&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="n"&gt;random&lt;/span&gt; &lt;span class="n"&gt;collection&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;OpenStack&lt;/span&gt; &lt;span class="n"&gt;Tools&lt;/span&gt;
+&lt;span class="n"&gt;Date&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;11&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;
+&lt;span class="n"&gt;Tags&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;openstack&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Whereas the corresponding header for GitHub would look like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;---&lt;/span&gt;
+&lt;span class="nl"&gt;layout:&lt;/span&gt; &lt;span class="n"&gt;post&lt;/span&gt;
+&lt;span class="nl"&gt;title:&lt;/span&gt; &lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="n"&gt;random&lt;/span&gt; &lt;span class="n"&gt;collection&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;OpenStack&lt;/span&gt; &lt;span class="n"&gt;Tools&lt;/span&gt;
+&lt;span class="nl"&gt;date:&lt;/span&gt; &lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;11&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;
+&lt;span class="nl"&gt;tags:&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;openstack&lt;/span&gt;
+&lt;span class="o"&gt;---&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I was able to generally automate this with the following script:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt; 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="k"&gt;for &lt;/span&gt;post in &lt;span class="s2"&gt;&amp;quot;$@&amp;quot;&lt;/span&gt;; &lt;span class="k"&gt;do&lt;/span&gt;
+&lt;span class="k"&gt;  &lt;/span&gt;sed -i &lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;  1,/^$/ {&lt;/span&gt;
+&lt;span class="s1"&gt;    1 i\---&lt;/span&gt;
+&lt;span class="s1"&gt;    1 i\layout: post&lt;/span&gt;
+
+&lt;span class="s1"&gt;    s/Title:/title:/&lt;/span&gt;
+&lt;span class="s1"&gt;    s/Date:/date:/&lt;/span&gt;
+&lt;span class="s1"&gt;    s/Tags:/tags:/&lt;/span&gt;
+
+&lt;span class="s1"&gt;    /^$/ i\---&lt;/span&gt;
+&lt;span class="s1"&gt;  }&lt;/span&gt;
+&lt;span class="s1"&gt;  &amp;#39;&lt;/span&gt; &lt;span class="nv"&gt;$post&lt;/span&gt;
+&lt;span class="k"&gt;done&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;The &lt;code&gt;tags:&lt;/code&gt; header need further processing to transform them into a
+&lt;a href="http://en.wikipedia.org/wiki/YAML"&gt;YAML&lt;/a&gt; list.  That means something like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;bar&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;baz&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Would need to end up looking like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nl"&gt;tags:&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;bar&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;baz&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While that's not entirely accurate -- YAML supports multiple list
+syntaxes and I could have just expressed that as &lt;code&gt;[foo,bar,baz]&lt;/code&gt; --  I
+prefer this extended syntax and got there via the following &lt;code&gt;awk&lt;/code&gt;
+script:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;BEGIN&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="n"&gt;state&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="n"&gt;state&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="o"&gt;/^&lt;/span&gt;&lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="o"&gt;:/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;
+  &lt;span class="n"&gt;next&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="n"&gt;state&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="o"&gt;/^---&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;split&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;taglist&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;,&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;tags:&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;t&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;taglist&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+      &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;  -&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;taglist&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;t&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+  &lt;span class="p"&gt;}&lt;/span&gt;
+
+  &lt;span class="n"&gt;state&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="n"&gt;state&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="o"&gt;/^---&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="n"&gt;state&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="n"&gt;print&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;(This would process a single post; I wrapped it in a shell script to
+run it across all the posts.)&lt;/p&gt;
+&lt;h1&gt;Redirecting legacy links&lt;/h1&gt;
+&lt;p&gt;In order to preserve links pointing at the old blog I needed to generate
+a bunch of HTML redirect files.  &lt;a href="http://scriptogr.am/"&gt;Scriptogram&lt;/a&gt; posts had permalinks
+of the form &lt;code&gt;/post/&amp;lt;slug&amp;gt;&lt;/code&gt;, where &lt;code&gt;&amp;lt;slug&amp;gt;&lt;/code&gt; was computed from the post
+title.  GitHub posts (with &lt;code&gt;permalinks: pretty&lt;/code&gt;) have the form
+&lt;code&gt;/&amp;lt;year&amp;gt;/&amp;lt;month&amp;gt;/&amp;lt;day&amp;gt;/&amp;lt;title&amp;gt;&lt;/code&gt;, where &lt;code&gt;&amp;lt;title&amp;gt;&lt;/code&gt; comes from the
+filename rather than the post metadata.&lt;/p&gt;
+&lt;p&gt;I automated the generation of redirects with the following script:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt; 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="k"&gt;for &lt;/span&gt;post in _posts/*; &lt;span class="k"&gt;do&lt;/span&gt;
+  &lt;span class="c"&gt;# read the title from the post metadata&lt;/span&gt;
+  &lt;span class="nv"&gt;title&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;grep &lt;span class="s1"&gt;&amp;#39;^title:&amp;#39;&lt;/span&gt; &lt;span class="nv"&gt;$post&lt;/span&gt;&lt;span class="k"&gt;)&lt;/span&gt;
+  &lt;span class="nv"&gt;title&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;title&lt;/span&gt;&lt;span class="p"&gt;/title: /&lt;/span&gt;&lt;span class="k"&gt;}&lt;/span&gt;
+
+  &lt;span class="c"&gt;# convert the title from the metadata into the slug&lt;/span&gt;
+  &lt;span class="c"&gt;# used by scriptogram&lt;/span&gt;
+  &lt;span class="nv"&gt;slug&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;title&lt;/span&gt;&lt;span class="p"&gt;,,&lt;/span&gt;&lt;span class="k"&gt;}&lt;/span&gt;
+  &lt;span class="nv"&gt;slug&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;slug&lt;/span&gt;&lt;span class="p"&gt;// /-&lt;/span&gt;&lt;span class="k"&gt;}&lt;/span&gt;
+  &lt;span class="nv"&gt;slug&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;slug&lt;/span&gt;&lt;span class="p"&gt;//[.,:?\/\&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;\&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;]/}&lt;/span&gt;
+
+&lt;span class="s2"&gt;  # parse the post filename into year, month, day, and title&lt;/span&gt;
+&lt;span class="s2"&gt;  # as used by github&lt;/span&gt;
+&lt;span class="s2"&gt;  post_name=${post/_posts\//}&lt;/span&gt;
+&lt;span class="s2"&gt;  post_date=${post_name:0:10}&lt;/span&gt;
+&lt;span class="s2"&gt;  post_title=${post_name:11}&lt;/span&gt;
+&lt;span class="s2"&gt;  post_title=${post_title:0:$(( ${#post_title} - 3))}&lt;/span&gt;
+&lt;span class="s2"&gt;  post_year=${post_date%%-*}&lt;/span&gt;
+&lt;span class="s2"&gt;  tmp=${post_date#*-}&lt;/span&gt;
+&lt;span class="s2"&gt;  post_month=${tmp%%-*}&lt;/span&gt;
+&lt;span class="s2"&gt;  post_day=${post_date##*-}&lt;/span&gt;
+
+&lt;span class="s2"&gt;  # the url at which the post is available on github&lt;/span&gt;
+&lt;span class="s2"&gt;  new_url=&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nv"&gt;$post_year&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nv"&gt;$post_month&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nv"&gt;$post_day&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nv"&gt;$post_title&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+
+&lt;span class="s2"&gt;  # generate the html redirect file&lt;/span&gt;
+&lt;span class="s2"&gt;  mkdir -p post/$slug&lt;/span&gt;
+&lt;span class="s2"&gt;  sed &amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;s&lt;/span&gt;&lt;span class="p"&gt;|URL|&lt;/span&gt;&lt;span class="nv"&gt;$new_url&lt;/span&gt;&lt;span class="p"&gt;|g&lt;/span&gt;&lt;span class="err"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt; redirect.html &amp;gt; post/&lt;/span&gt;&lt;span class="nv"&gt;$slug&lt;/span&gt;&lt;span class="p"&gt;/index.html&lt;/span&gt;
+&lt;span class="p"&gt;done&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;Where &lt;code&gt;redirect.html&lt;/code&gt; looks like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;&amp;lt;!DOCTYPE html&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;html&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;head&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;link&lt;/span&gt; &lt;span class="na"&gt;rel=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;canonical&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;href=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;URL&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;meta&lt;/span&gt; &lt;span class="na"&gt;http-equiv=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;content-type&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;content=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;text/html; charset=utf-8&amp;quot;&lt;/span&gt; &lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;meta&lt;/span&gt; &lt;span class="na"&gt;http-equiv=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;refresh&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;content=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;0;url=URL&amp;quot;&lt;/span&gt; &lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/head&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/html&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So given a file &lt;code&gt;_posts/2013-11-12-a-random-collection.md&lt;/code&gt;, this would
+result in a new file
+&lt;code&gt;post/a-random-collection-of-openstack-tools/index.html&lt;/code&gt; with the
+following content:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;&amp;lt;!DOCTYPE html&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;html&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;head&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;link&lt;/span&gt; &lt;span class="na"&gt;rel=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;canonical&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;href=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/2013/11/12/a-random-collection/&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;meta&lt;/span&gt; &lt;span class="na"&gt;http-equiv=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;content-type&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;content=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;text/html; charset=utf-8&amp;quot;&lt;/span&gt; &lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;meta&lt;/span&gt; &lt;span class="na"&gt;http-equiv=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;refresh&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;content=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;0;url=/2013/11/12/a-random-collection/&amp;quot;&lt;/span&gt; &lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/head&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/html&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With this in place, a URL such as &lt;a href="http://blog.oddbit.com/post/a-random-collection-of-openstack-tools"&gt;http://blog.oddbit.com/post/a-random-collection-of-openstack-tools&lt;/a&gt; goes to the right place.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Update&lt;/strong&gt;: It turns out that it has been almost exactly a year since
+I &lt;a href="http://blog.oddbit.com/2012/11/06/moving-from-blogger/"&gt;moved from Blogger to Scriptogram&lt;/a&gt;.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Wed, 13 Nov 2013 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2013-11-13:posts/2013/11/13/moving-to-github/</guid><category>blog</category></item></channel></rss>

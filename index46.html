@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/12/21/parsing-libvirt-xml-with-xmllint/">Fri 21 December 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/12/21/parsing-libvirt-xml-with-xmllint/" title="Permalink to Parsing Libvirt XML with xmllint" rel="bookmark">Parsing Libvirt XML with xmllint</a>
+		</h2>
+		<div class="entry-content">
+			<p>I've been playing around with the <a href="http://lxc.sourceforge.net/">LXC</a> support in libvirt recently,
+and I'm trying to use a model where each LXC instance is backed by a
+dedicated LVM volume.  This means that the process of starting an
+instance is:</p>
+<ul>
+<li>mount the instance root filesystem if necessary</li>
+<li>start the instance</li>
+</ul>
+<p>It's annoying to have to do this by hand.  I could simply add all the
+LXC filesystems to <code>/etc/fstab</code>, but this would mean and extra step
+when creating and deleting each instance.</p>
+<p>I thought about creating a wrapper script to handle the mounting (and
+unmounting, perhaps) for me, but this leads to another problem: I need
+a way to figure out which backing device corresponding to the virtual
+instance I'm trying to boot.</p>
+<p>I could just adopt a strict naming scheme, so that for a given
+instance "foo" the backing store would be
+<code>/dev/vg_something/domain-foo</code>, but that's too easy!  In order to make
+life interesting:</p>
+<ul>
+<li>I've added some namespace-prefixed metadata to the instance XML
+  description, and </li>
+<li>Written a shell script to extract this data (and more) using
+  <code>xmllint</code>.</li>
+</ul>
+<h2>Metadata</h2>
+<p>The Libvirt domain XML format allows for a general <a href="http://libvirt.org/formatdomain.html#elementsMetadata">metadata
+section</a>:</p>
+<blockquote>
+<p>The <code>metadata</code> node can be used by applications to store custom
+metadata in the form of XML nodes/trees. Applications <strong>must</strong> use
+custom namespaces on their XML nodes/trees, with only one top-level
+element per namespace (if the application needs structure, they
+should have sub-elements to their namespace element). </p>
+</blockquote>
+<p>This means that if you want to add metadata to a domain description,
+you need to define a namespace and use a namespace prefix. For
+example, if I want to add a <code>device</code> element pointing at the backend
+storage device for my domain, it might look like this:</p>
+<div class="highlight"><pre><span class="nt">&lt;metadata</span> <span class="na">xmlns:ob=</span><span class="s">&quot;http://oddbit.com/ns/libvirt/1&quot;</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;ob:device&gt;</span>/dev/vg0/instance<span class="nt">&lt;/ob:device&gt;</span>
+<span class="nt">&lt;/metadata&gt;</span>
+</pre></div>
+
+
+<h2>Extracting metadata with xmllint</h2>
+<p>The <code>xmllint</code> tool, part of <a href="http://www.xmlsoft.org/">libxml</a>, can extract nodes from an XML
+document using <a href="https://en.wikipedia.org/wiki/XPath">xpath</a> expressions.  Unfortunately, while <code>xmllint</code>
+does have namespace support, it's not particularly convenient.  Using
+the <code>--shell</code> mode there's a helpful <code>setns</code> command:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">xmllint</span> <span class="o">--</span><span class="n">shell</span> <span class="n">domain</span><span class="p">.</span><span class="n">xml</span>
+<span class="o">/</span> <span class="o">&gt;</span> <span class="n">setns</span> <span class="n">x</span><span class="o">=</span><span class="n">http</span><span class="o">:</span><span class="c1">//oddbit.com/ns/libvirt/1</span>
+<span class="o">/</span> <span class="o">&gt;</span> <span class="n">xpath</span> <span class="c1">//x:device</span>
+<span class="n">Object</span> <span class="n">is</span> <span class="n">a</span> <span class="n">Node</span> <span class="n">Set</span> <span class="o">:</span>
+<span class="n">Set</span> <span class="n">contains</span> <span class="mi">1</span> <span class="n">nodes</span><span class="o">:</span>
+<span class="mi">1</span>  <span class="n">ELEMENT</span> <span class="n">ob</span><span class="o">:</span><span class="n">device</span>
+</pre></div>
+
+
+<p>But that's not available from the command line.  We can use the
+<code>namespace-uri()</code> and <code>local-name()</code> xpath functions to get to the
+same place, albeit more verbosely.  An equivalent to the above shell
+session would be:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="nx">xmllint</span> <span class="o">--</span><span class="nx">xpath</span> <span class="s1">&#39;//*[namespace-uri()=&quot;http://oddbit.com/ns/libvirt/1&quot; and local-name()=&quot;device&quot;]&#39;</span>
+<span class="o">&lt;</span><span class="nx">ob</span><span class="p">:</span><span class="nx">device</span><span class="o">&gt;/</span><span class="nx">dev</span><span class="p">/</span><span class="nx">vg0</span><span class="p">/</span><span class="nx">instance</span><span class="o">&lt;/</span><span class="nx">ob</span><span class="p">:</span><span class="nx">device</span><span class="o">&gt;</span>
+</pre></div>
+
+
+<h2>Putting it all together</h2>
+<p>The following shell script looks through all inactive LXC domains and
+figures out:</p>
+<ul>
+<li>If it should try to start them, using the <code>&lt;oddbit:autostart&gt;</code> element,</li>
+<li>What the backend storage is, using the <code>&lt;oddbit:device&gt;</code> element,
+  and</li>
+<li>
+<p>Where to mount it, by looking for the libvirt <code>&lt;filesystem&gt;</code> element
+  with a target of <code>/</code>.</p>
+<p>#!/bin/sh</p>
+<p>tmpfile=$(mktemp)
+  trap 'rm -f $tmpfile' EXIT</p>
+<p>virsh -c lxc:/// list --name --inactive | while read domain; do
+    [ "$domain" ] || continue</p>
+<div class="highlight"><pre><span class="n">virsh</span> <span class="n">dumpxml</span> <span class="err">$</span><span class="n">domain</span> <span class="o">&gt;</span> <span class="err">$</span><span class="n">tmpfile</span>
+
+<span class="n">autostart</span><span class="o">=</span><span class="err">$</span><span class="p">(</span><span class="n">xmllint</span> <span class="o">--</span><span class="n">xpath</span> <span class="err">&#39;</span><span class="c1">//domain/metadata/*[namespace-uri()=&quot;http://oddbit.com/ns/libvirt/1&quot; and local-name()=&quot;autostart&quot;]/text()&#39; $tmpfile)</span>
+
+<span class="p">[</span> <span class="s">&quot;$autostart&quot;</span> <span class="o">=</span> <span class="n">True</span> <span class="p">]</span> <span class="o">||</span> <span class="k">continue</span>
+
+<span class="n">device</span><span class="o">=</span><span class="err">$</span><span class="p">(</span><span class="n">xmllint</span> <span class="o">--</span><span class="n">xpath</span> <span class="err">&#39;</span><span class="c1">//domain/metadata/*[namespace-uri()=&quot;http://oddbit.com/ns/libvirt/1&quot; and local-name()=&quot;device&quot;]/text()&#39; $tmpfile)</span>
+<span class="n">mount</span><span class="o">=</span><span class="err">$</span><span class="p">(</span><span class="n">xmllint</span> <span class="o">--</span><span class="n">xpath</span> <span class="err">&#39;</span><span class="n">string</span><span class="p">(</span><span class="c1">//filesystem/target[@dir = &quot;/&quot;]/../source/@dir)&#39; $tmpfile)</span>
+
+<span class="n">echo</span> <span class="s">&quot;$domain $autostart $device $mount&quot;</span>
+</pre></div>
+
+
+<p>done</p>
+</li>
+</ul>
+<p>I'm not actually planning on using this in practice.  I'll
+probably go the naming scheme route.  But this was fun to figure out.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/index45.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+		<div class="nav-next"><a href="http://localhost:8000/index47.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

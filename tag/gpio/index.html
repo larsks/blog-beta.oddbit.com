@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged gpio</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>gpio</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2014/07/26/gpio-watch-run-scripts-in-response-to-gpio-signals/">Sat 26 July 2014</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/gpio/index.html" rel="tag">gpio</a>,  <a href="http://localhost:8000/tag/raspberrypi/index.html" rel="tag">raspberrypi</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2014/07/26/gpio-watch-run-scripts-in-response-to-gpio-signals/" title="Permalink to gpio-watch: Run scripts in response to GPIO signals" rel="bookmark">gpio-watch: Run scripts in response to GPIO signals</a>
+		</h2>
+		<div class="entry-content">
+			<p>For a small project I'm working on I needed to attach a few buttons to
+a <a href="http://raspberrypi.org/">Raspberry Pi</a> and have some code execute in response to the
+button presses.</p>
+<p>While normally I would reach for <a href="http://python.org/">Python</a> for a simple project like
+this, constraints of the project made it necessary to implement
+something in C with minimal dependencies.  I didn't want to write
+something that was tied closely to my project...</p>
+<p><a href="https://xkcd.com/974/"><img
+  src="http://imgs.xkcd.com/comics/the_general_problem.png"/></a></p>
+<p>...so I ended up writing <a href="https://github.com/larsks/gpio-watch">gpio-watch</a>, a simple tool for connecting
+shell scripts (or any other executable) to GPIO events.  There are a
+few ways to interact with GPIO on the Raspberry Pi.  For the fastest
+possible performance, you will need to interact directly with the
+underlying hardware using, e.g., something like <a href="http://hertaville.com/2014/07/07/rpimmapgpio/">direct register
+access</a>.  Since I was only responding to button presses I opted
+to take advantage of the <a href="https://www.kernel.org/doc/Documentation/gpio/sysfs.txt">GPIO sysfs interface</a>, which exposes
+the GPIO pins via the filesystem.</p>
+<p>To access a GPIO pin using the <code>sysfs</code> interface:</p>
+<ul>
+<li>
+<p>You write the GPIO number to <code>/sys/class/gpio/export</code>.  This will
+  result in a new directory named <code>gpio&lt;pin&gt;</code> appearing in
+  <code>/sys/class/gpio</code> (where <code>&lt;pin&gt;</code> is the GPIO number you have exported).</p>
+</li>
+<li>
+<p>Inside <code>/sys/class/gpio/gpio&lt;pin&gt;</code>, there are a number of files:</p>
+</li>
+<li>
+<p><code>direction</code> is used to configure the GPIO as an input (write <code>in</code>)
+    or output (write <code>out</code>).</p>
+</li>
+<li><code>edge</code> is used to control which edge of a signal generates
+    interrupts.  The options are <code>rising</code>, <code>falling</code>, <code>both</code>, or
+    <code>none</code>.</li>
+<li>
+<p><code>value</code> contains the current value of the GPIO pin.</p>
+</li>
+<li>
+<p>Once you have properly configure a pin, you can monitor the <code>value</code>
+  file for events (see below).</p>
+</li>
+</ul>
+<p>We can use the <code>poll()</code> or <code>select()</code> system calls to monitor events
+on <code>/sys/class/gpio/gpio&lt;pin&gt;/value</code>.  For example, to wait for a signal
+on GPIO 23 (assuming that we have correctly configured the <code>direction</code>
+and <code>edge</code> values):</p>
+<div class="highlight"><pre><span class="cp">#include &lt;poll.h&gt;</span>
+<span class="cp">#include &lt;fcntl.h&gt;</span>
+<span class="cp">#include &lt;stdio.h&gt;</span>
+
+<span class="kt">void</span> <span class="nf">poll_pin</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">struct</span> <span class="n">pollfd</span> <span class="n">fdlist</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+  <span class="kt">int</span> <span class="n">fd</span><span class="p">;</span>
+
+  <span class="n">fd</span> <span class="o">=</span> <span class="n">open</span><span class="p">(</span><span class="s">&quot;/sys/class/gpio/gpio23/value&quot;</span><span class="p">,</span> <span class="n">O_RDONLY</span><span class="p">);</span>
+  <span class="n">fdlist</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">fd</span> <span class="o">=</span> <span class="n">fd</span><span class="p">;</span>
+  <span class="n">fdlist</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">events</span> <span class="o">=</span> <span class="n">POLLPRI</span><span class="p">;</span>
+
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">err</span><span class="p">;</span>
+    <span class="kt">char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+
+    <span class="n">err</span> <span class="o">=</span> <span class="n">poll</span><span class="p">(</span><span class="n">fdlist</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">==</span> <span class="n">err</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">perror</span><span class="p">(</span><span class="s">&quot;poll&quot;</span><span class="p">);</span>
+      <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">err</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="n">fdlist</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">fd</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;event on pin 23!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+  <span class="n">poll_pin</span><span class="p">();</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>The <code>gpio-watch</code> command wraps this all up in a convenient package
+that lets you do something like this:</p>
+<div class="highlight"><pre><span class="n">gpio</span><span class="o">-</span><span class="n">watch</span> <span class="o">-</span><span class="n">e</span> <span class="n">rising</span> <span class="mi">18</span> <span class="mi">23</span> <span class="mi">24</span>
+</pre></div>
+
+
+<p>The <code>-e rising</code> option means that we are watching for rising signals
+on all three pins.  You can also trigger on different parts of the
+signal for each pin:
+    gpio-watch 18:rising 23:both 24:falling</p>
+<p>When <code>gpio-watch</code> sees an event on a pin, it looks for
+<code>/etc/gpio-scripts/&lt;pin&gt;</code> (e.g., <code>/etc/gpio-scripts/23</code>), and then runs:</p>
+<div class="highlight"><pre><span class="p">/</span><span class="nx">etc</span><span class="p">/</span><span class="nx">gpio</span><span class="na">-scripts</span><span class="o">/&lt;</span><span class="nx">pin</span><span class="o">&gt;</span> <span class="o">&lt;</span><span class="nx">pin</span><span class="o">&gt;</span> <span class="o">&lt;</span><span class="nb">value</span><span class="o">&gt;</span>
+</pre></div>
+
+
+<p>Since the script is passed the pin number as the first argument, you
+can use a single script to handle events on multiple pins (by
+symlinking the script to the appropriate name).</p>
+<h2>Mechanical switches</h2>
+<p>There is some special code in <code>gpio-watch</code> for handling mechanical
+buttons.  The <code>switch</code> edge mode...</p>
+<div class="highlight"><pre><span class="n">gpio</span><span class="o">-</span><span class="n">watch</span> <span class="mi">23</span><span class="o">:</span><span class="k">switch</span>
+</pre></div>
+
+
+<p>...enables some simple <a href="https://en.wikipedia.org/wiki/Switch#Contact_bounce">de-bouncing</a> logic.  This causes
+<code>gpio-watch</code> to monitor both rising and falling events on this pin,
+but the events scripts will only trigger on the falling edge event,
+which must occur more than <code>DEBOUNCE_INTERVAL</code> after the rising edge
+event.  In other words, you must both press and release the button for
+the event to fire, and the debounce logic should avoid firing the
+event multiple times due to contact bounce.</p>
+<p>As an example, assume we have a script <code>/etc/gpio-scripts/23</code> that
+looks like this:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+<span class="nb">echo</span> <span class="s2">&quot;Something happened! Pin=$1, value=$2&quot;</span>
+</pre></div>
+</td></tr></table>
+
+<p>If I run <code>gpio-watch</code> to monitor the falling signal edge and press a
+button attached to pin 23 three times, I see:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">gpio</span><span class="o">-</span><span class="n">watch</span> <span class="mi">23</span><span class="o">:</span><span class="n">falling</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">1</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+</pre></div>
+
+
+<p>Whereas if I use <code>switch</code> mode, I see:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">gpio</span><span class="o">-</span><span class="n">watch</span> <span class="mi">23</span><span class="o">:</span><span class="k">switch</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+<span class="n">Something</span> <span class="n">happened</span><span class="o">!</span> <span class="n">Pin</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span>
+</pre></div>
+
+
+<h2>Use the source, Luke!</h2>
+<p>The source is available <a href="https://github.com/larsks/gpio-watch">on gitub</a>.  To get started, clone
+the repository with <code>git</code>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">git</span> <span class="n">clone</span> <span class="n">https</span><span class="o">:</span><span class="c1">//github.com/larsks/gpio-watch.git</span>
+</pre></div>
+
+
+<p>And then build the source using <code>make</code>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">cd</span> <span class="n">gpio</span><span class="o">-</span><span class="n">watch</span>
+<span class="err">$</span> <span class="n">make</span>
+<span class="n">cc</span>    <span class="o">-</span><span class="n">c</span> <span class="o">-</span><span class="n">o</span> <span class="n">main</span><span class="p">.</span><span class="n">o</span> <span class="n">main</span><span class="p">.</span><span class="n">c</span>
+<span class="n">cc</span>    <span class="o">-</span><span class="n">c</span> <span class="o">-</span><span class="n">o</span> <span class="n">gpio</span><span class="p">.</span><span class="n">o</span> <span class="n">gpio</span><span class="p">.</span><span class="n">c</span>
+<span class="n">cc</span>    <span class="o">-</span><span class="n">c</span> <span class="o">-</span><span class="n">o</span> <span class="n">fileutil</span><span class="p">.</span><span class="n">o</span> <span class="n">fileutil</span><span class="p">.</span><span class="n">c</span>
+<span class="n">cc</span>    <span class="o">-</span><span class="n">c</span> <span class="o">-</span><span class="n">o</span> <span class="n">logging</span><span class="p">.</span><span class="n">o</span> <span class="n">logging</span><span class="p">.</span><span class="n">c</span>
+<span class="n">cc</span>  <span class="o">-</span><span class="n">o</span> <span class="n">gpio</span><span class="o">-</span><span class="n">watch</span> <span class="n">main</span><span class="p">.</span><span class="n">o</span> <span class="n">gpio</span><span class="p">.</span><span class="n">o</span> <span class="n">fileutil</span><span class="p">.</span><span class="n">o</span> <span class="n">logging</span><span class="p">.</span><span class="n">o</span> <span class="o">-</span><span class="n">lrt</span>
+</pre></div>
+
+
+<p>There is basic documentation in <code>README.md</code> in the distribution.  If
+you run into any problems, feel free to <a href="https://github.com/larsks/gpio-watch/issues/new">open a new issue</a>.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

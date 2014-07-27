@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2014/01/19/show-ovs-external-ids/">Sun 19 January 2014</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/openstack/index.html" rel="tag">openstack</a>,  <a href="http://localhost:8000/tag/openvswitch/index.html" rel="tag">openvswitch</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2014/01/19/show-ovs-external-ids/" title="Permalink to Show OVS external-ids" rel="bookmark">Show OVS external-ids</a>
+		</h2>
+		<div class="entry-content">
+			<p>This is just here as a reminder for me:</p>
+<p>An OVS interface has a variety of attributes associated with it, including an
+<code>external-id</code> field that can be used to associate resources outside of
+OpenVSwitch with the interface.  You can view this field with the following
+command:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">ovs</span><span class="o">-</span><span class="n">vsctl</span> <span class="o">--</span><span class="n">columns</span><span class="o">=</span><span class="n">name</span><span class="p">,</span><span class="n">external</span><span class="o">-</span><span class="n">ids</span> <span class="n">list</span> <span class="n">Interface</span>
+</pre></div>
+
+
+<p>Which on my system, with a single virtual instance, looks like this:</p>
+<div class="highlight"><pre><span class="cp"># ovs-vsctl --columns=name,external-ids list Interface</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="n">name</span>                <span class="o">:</span> <span class="s">&quot;qvo519d7cc4-75&quot;</span>
+<span class="n">external_ids</span>        <span class="o">:</span> <span class="p">{</span><span class="n">attached</span><span class="o">-</span><span class="n">mac</span><span class="o">=</span><span class="s">&quot;fa:16:3e:f7:75:b0&quot;</span><span class="p">,</span> <span class="n">iface</span><span class="o">-</span><span class="n">id</span><span class="o">=</span><span class="s">&quot;519d7cc4-7593-4944-af7b-4056436f2d66&quot;</span><span class="p">,</span> <span class="n">iface</span><span class="o">-</span><span class="n">status</span><span class="o">=</span><span class="n">active</span><span class="p">,</span> <span class="n">vm</span><span class="o">-</span><span class="n">uuid</span><span class="o">=</span><span class="s">&quot;0330b084-03db-4d42-a231-2cd6ad89515b&quot;</span><span class="p">}</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+</pre></div>
+
+
+<p>Note the information contained here:</p>
+<ul>
+<li><code>attached-mac</code> is the MAC address of the device attached to this interface.</li>
+<li><code>vm-uuid</code> is the libvirt UUID for the instance attached to this interface...</li>
+<li>...which also happens to be the Nova UUID for the instance.</li>
+</ul>
+<p>So we can pass that UUID to <code>virsh dumpxml</code>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="nx">virsh</span> <span class="nx">dumpxml</span> <span class="mi">0330</span><span class="nx">b084</span><span class="o">-</span><span class="mi">03</span><span class="nb">db</span><span class="o">-</span><span class="mi">4</span><span class="nx">d42</span><span class="na">-a231</span><span class="o">-</span><span class="mi">2</span><span class="nx">cd6ad89515b</span>
+<span class="o">&lt;</span><span class="nx">domain</span> <span class="k">type</span><span class="o">=</span><span class="s1">&#39;kvm&#39;</span> <span class="n">id</span><span class="o">=</span><span class="s1">&#39;150&#39;</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nb">name</span><span class="o">&gt;</span><span class="nx">instance</span><span class="o">-</span><span class="mi">0000009</span><span class="nx">c</span><span class="o">&lt;/</span><span class="nb">name</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nx">uuid</span><span class="o">&gt;</span><span class="mi">0330</span><span class="nx">b084</span><span class="o">-</span><span class="mi">03</span><span class="nb">db</span><span class="o">-</span><span class="mi">4</span><span class="nx">d42</span><span class="na">-a231</span><span class="o">-</span><span class="mi">2</span><span class="nx">cd6ad89515b</span><span class="o">&lt;/</span><span class="nx">uuid</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nx">memory</span> <span class="n">unit</span><span class="o">=</span><span class="s1">&#39;KiB&#39;</span><span class="o">&gt;</span><span class="mi">6144000</span><span class="o">&lt;/</span><span class="nx">memory</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nx">currentMemory</span> <span class="n">unit</span><span class="o">=</span><span class="s1">&#39;KiB&#39;</span><span class="o">&gt;</span><span class="mi">6144000</span><span class="o">&lt;/</span><span class="nx">currentMemory</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nx">vcpu</span> <span class="n">placement</span><span class="o">=</span><span class="s1">&#39;static&#39;</span><span class="o">&gt;</span><span class="mi">1</span><span class="o">&lt;/</span><span class="nx">vcpu</span><span class="o">&gt;</span>
+<span class="nx">.</span>
+<span class="nx">.</span>
+<span class="nx">.</span>
+</pre></div>
+
+
+<p>Or to <code>nova show</code>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">nova</span> <span class="n">show</span> <span class="mo">0330</span><span class="n">b084</span><span class="o">-</span><span class="mo">03</span><span class="n">db</span><span class="o">-</span><span class="mi">4</span><span class="n">d42</span><span class="o">-</span><span class="n">a231</span><span class="o">-</span><span class="mi">2</span><span class="n">cd6ad89515b</span> 
+<span class="o">+--------------------------------------+----------------------------------------------------------+</span>
+<span class="o">|</span> <span class="n">Property</span>                             <span class="o">|</span> <span class="n">Value</span>                                                    <span class="o">|</span>
+<span class="o">+--------------------------------------+----------------------------------------------------------+</span>
+<span class="o">|</span> <span class="n">OS</span><span class="o">-</span><span class="n">DCF</span><span class="o">:</span><span class="n">diskConfig</span>                    <span class="o">|</span> <span class="n">MANUAL</span>                                                   <span class="o">|</span>
+<span class="o">|</span> <span class="n">OS</span><span class="o">-</span><span class="n">EXT</span><span class="o">-</span><span class="n">AZ</span><span class="o">:</span><span class="n">availability_zone</span>          <span class="o">|</span> <span class="n">nova</span>                                                     <span class="o">|</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+</pre></div>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/index13.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+		<div class="nav-next"><a href="http://localhost:8000/index15.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

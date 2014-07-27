@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/fedora/rss/index.html" rel="self"></atom:link><lastBuildDate>Tue, 20 May 2014 00:00:00 -0400</lastBuildDate><item><title>Fedora and OVS Bridge Interfaces</title><link>http://localhost:8000/posts/2014/05/20/fedora-and-ovs-bridge-interfaces/</link><description>&lt;p&gt;I run OpenStack on my laptop, and I've been chasing down a pernicious
+problem with OVS bridge interfaces under both F19 and F20.  My
+OpenStack environment relies on an OVS bridge device named &lt;code&gt;br-ex&lt;/code&gt; for
+external connectivity and for making services available to OpenStack
+instances, but after rebooting, &lt;code&gt;br-ex&lt;/code&gt; was consistently unconfigured,
+which caused a variety of problems.&lt;/p&gt;
+&lt;p&gt;This is the network configuration file for &lt;code&gt;br-ex&lt;/code&gt; on my system:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;DEVICE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ex&lt;/span&gt;
+&lt;span class="n"&gt;DEVICETYPE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;ovs&lt;/span&gt;
+&lt;span class="n"&gt;TYPE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;OVSBridge&lt;/span&gt;
+&lt;span class="n"&gt;BOOTPROT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;static&lt;/span&gt;
+&lt;span class="n"&gt;IPADDR&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;192.168.200.1&lt;/span&gt;
+&lt;span class="n"&gt;NETMASK&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;255.255.255.0&lt;/span&gt;
+&lt;span class="n"&gt;ONBOOT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;yes&lt;/span&gt;
+&lt;span class="n"&gt;NM_CONTROLLED&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;no&lt;/span&gt;
+&lt;span class="n"&gt;ZONE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;openstack&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Running &lt;code&gt;ifup br-ex&lt;/code&gt; would also fail to configure the interface, but
+running &lt;code&gt;ifdown br-ex; ifup br-ex&lt;/code&gt; would configure things
+appropriately.&lt;/p&gt;
+&lt;p&gt;I finally got fed up with this behavior and spent some time chasing
+down the problem, and this is what I found:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Calling &lt;code&gt;ifup br-ex&lt;/code&gt; passes control to
+  &lt;code&gt;/etc/sysconfig/network-scripts/ifup-ovs&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ifup-ovs&lt;/code&gt; calls the &lt;code&gt;check_device_down&lt;/code&gt; function from
+  &lt;code&gt;network-functions&lt;/code&gt;, which looks like:&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;check_device_down&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+     &lt;span class="p"&gt;[&lt;/span&gt; &lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;sys&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;class&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+     &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;LC_ALL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;C&lt;/span&gt; &lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="n"&gt;link&lt;/span&gt; &lt;span class="n"&gt;show&lt;/span&gt; &lt;span class="n"&gt;dev&lt;/span&gt; &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;/&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;null&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;grep&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;q&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;,UP&amp;quot;&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;then&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;
+     &lt;span class="k"&gt;else&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+     &lt;span class="n"&gt;fi&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This returns failure (=1) if the interface flags contain &lt;code&gt;,UP&lt;/code&gt;.
+Unfortunately, since information about this device is stored
+persistently in &lt;code&gt;ovsdb&lt;/code&gt;, the device is already &lt;code&gt;UP&lt;/code&gt; when &lt;code&gt;ifup&lt;/code&gt; is
+called, which causes &lt;code&gt;ifup-ovs&lt;/code&gt; to skip further device
+configuration.  The logic that calls &lt;code&gt;check_device_down&lt;/code&gt; looks like
+this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if check_device_down &amp;quot;&lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;DEVICE&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;&amp;quot;; then
+        ovs-vsctl -t &lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;TIMEOUT&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt; -- --may-exist add-br &amp;quot;&lt;span class="nv"&gt;$DEVICE&lt;/span&gt;&amp;quot; &lt;span class="nv"&gt;$OVS_OPTIONS&lt;/span&gt; \
+        &lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;OVS_EXTRA&lt;/span&gt;&lt;span class="o"&gt;+--&lt;/span&gt; &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;OVS_EXTRA&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt; \
+        &lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;STP&lt;/span&gt;&lt;span class="o"&gt;+--&lt;/span&gt; &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="n"&gt;bridge&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;$DEVICE&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;stp_enable&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;${STP&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;&amp;quot;}
+else
+        OVSBRIDGECONFIGURED=&amp;quot;yes&amp;quot;
+fi
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This sets &lt;code&gt;OVSBRIDGECONFIGURED&lt;/code&gt; if it believes the device is &lt;code&gt;UP&lt;/code&gt;,
+which causes &lt;code&gt;ifup-ovs&lt;/code&gt; to skip the call to &lt;code&gt;ifup-eth&lt;/code&gt; to configure
+the interface:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if [ &amp;quot;&lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;OVSBOOTPROTO&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;&amp;quot; != &amp;quot;dhcp&amp;quot; ] &lt;span class="err"&gt;&amp;amp;&amp;amp;&lt;/span&gt; [ -z &amp;quot;&lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;OVSINTF&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;&amp;quot; ] &lt;span class="err"&gt;&amp;amp;&amp;amp;&lt;/span&gt; \
+        [ &amp;quot;&lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;OVSBRIDGECONFIGURED&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;&amp;quot; != &amp;quot;yes&amp;quot; ]; then
+        &lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;OTHERSCRIPT&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt; &lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;CONFIG&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;
+fi
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I have found that the simplest solution to this problem is to disable
+the logic that sets &lt;code&gt;OVSBRIDGECONFIGURED&lt;/code&gt;, by changing this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;else&lt;/span&gt;
+        &lt;span class="n"&gt;OVSBRIDGECONFIGURED&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;yes&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;To this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;else&lt;/span&gt;
+        &lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OVSBRIDGECONFIGURED&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;yes&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With this change in place, &lt;code&gt;br-ex&lt;/code&gt; is correctly configured after a
+reboot.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 20 May 2014 00:00:00 -0400</pubDate><guid>tag:localhost:8000,2014-05-20:posts/2014/05/20/fedora-and-ovs-bridge-interfaces/</guid><category>fedora</category><category>openstack</category><category>openvswitch</category><category>networking</category></item><item><title>Private /tmp directories in Fedora</title><link>http://localhost:8000/posts/2012/11/05/private-tmp-directories-in-fedora/</link><description>&lt;p&gt;I ran into an odd problem the other day: I was testing out some
+configuration changes for a web application by dropping files into
+&lt;code&gt;/tmp&lt;/code&gt; and pointing the application configuration at the appropriate
+directory.  Everything worked out great when testing it by hand...but
+when starting up the &lt;code&gt;httpd&lt;/code&gt; service, the application behaved as if it
+was unable to find any of the files in &lt;code&gt;/tmp&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;My first assumption was that had simply missed something obvious like
+file permissions or that I had a typo in my configuration, but after
+repeated checks and lots of testing it was obvious that something else
+was going on.&lt;/p&gt;
+&lt;p&gt;Grasping at straws I took a close look at the &lt;code&gt;systemd&lt;/code&gt; service file
+for &lt;code&gt;httpd&lt;/code&gt;, which looks like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[Unit]&lt;/span&gt;
+&lt;span class="na"&gt;Description&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;The Apache HTTP Server (prefork MPM)&lt;/span&gt;
+&lt;span class="na"&gt;After&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;syslog.target network.target remote-fs.target nss-lookup.target&lt;/span&gt;
+
+&lt;span class="k"&gt;[Service]&lt;/span&gt;
+&lt;span class="na"&gt;Type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;forking&lt;/span&gt;
+&lt;span class="na"&gt;PIDFile&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/var/run/httpd/httpd.pid&lt;/span&gt;
+&lt;span class="na"&gt;EnvironmentFile&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/etc/sysconfig/httpd&lt;/span&gt;
+&lt;span class="na"&gt;ExecStart&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/usr/sbin/httpd $OPTIONS -k start&lt;/span&gt;
+&lt;span class="na"&gt;ExecReload&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/usr/sbin/httpd $OPTIONS -t&lt;/span&gt;
+&lt;span class="na"&gt;ExecReload&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/bin/kill -HUP $MAINPID&lt;/span&gt;
+&lt;span class="na"&gt;ExecStop&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/usr/sbin/httpd $OPTIONS -k stop&lt;/span&gt;
+&lt;span class="na"&gt;PrivateTmp&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;true&lt;/span&gt;
+
+&lt;span class="k"&gt;[Install]&lt;/span&gt;
+&lt;span class="na"&gt;WantedBy&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;multi-user.target&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Browsing throught file the following line caught my eye:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;PrivateTmp&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you know about per-process namespaces in Linux, you're probably
+saying "Ah-ha!".  If you &lt;em&gt;don't&lt;/em&gt; know about per-process namespaces in
+Linux...you should, because this is the foundation for all sorts of
+things including Linux Containers (&lt;a href="http://lxc.sourceforge.net/"&gt;LXC&lt;/a&gt;).  Here's some good
+introductory reading:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="http://lxr.free-electrons.com/source/Documentation/unshare.txt"&gt;http://lxr.free-electrons.com/source/Documentation/unshare.txt&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://www.debian-administration.org/article/628/Per-Process_Namespaces"&gt;http://www.debian-administration.org/article/628/Per-Process_Namespaces&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://glandium.org/blog/?p=217"&gt;http://glandium.org/blog/?p=217&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;In short, with this configuration in place, the service gets it's very
+own version of &lt;code&gt;/tmp&lt;/code&gt; not shared with any other process.  While the
+files I placed in &lt;code&gt;/tmp&lt;/code&gt; were visible in &lt;em&gt;my&lt;/em&gt; process, they didn't
+exist from the point of view of Apache.&lt;/p&gt;
+&lt;p&gt;The fix in my case was to place the files somewhere other than &lt;code&gt;/tmp&lt;/code&gt;.
+One could also disable the &lt;code&gt;PrivateTmp&lt;/code&gt; setting, but it's generally
+turned on for reasons of security.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;PrivateTmp&lt;/code&gt; option is documented in &lt;a href="https://docs.fedoraproject.org/en-US/Fedora/17/html/Release_Notes/sect-Release_Notes-Changes_for_Sysadmin.html"&gt;Changes in Fedora for System
+Administrators&lt;/a&gt;, and Dan Walsh discusses it briefly on
+&lt;a href="http://danwalsh.livejournal.com/51459.html"&gt;his blog&lt;/a&gt;.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Mon, 05 Nov 2012 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2012-11-05:posts/2012/11/05/private-tmp-directories-in-fedora/</guid><category>fedora</category><category>systemd</category></item></channel></rss>

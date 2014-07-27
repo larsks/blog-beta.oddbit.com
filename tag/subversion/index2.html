@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged subversion</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>subversion</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2010/01/29/cleaning-up-subversion-with-git/">Fri 29 January 2010</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/git/index.html" rel="tag">git</a>,  <a href="http://localhost:8000/tag/subversion/index.html" rel="tag">subversion</a>,  <a href="http://localhost:8000/tag/svn/index.html" rel="tag">svn</a>,  <a href="http://localhost:8000/tag/versioncontrol/index.html" rel="tag">versioncontrol</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2010/01/29/cleaning-up-subversion-with-git/" title="Permalink to Cleaning up Subversion with Git" rel="bookmark">Cleaning up Subversion with Git</a>
+		</h2>
+		<div class="entry-content">
+			<h1>Overview</h1>
+<p>At my office, we have a crufty <a href="http://subversion.tigris.org/">Subversion</a> repository (dating back to early 2006) that contains a jumble of unrelated projects. We would like to split this single repository up into a number of smaller repositories, each following the recommended trunk/tags/branches repository organization.</p>
+<p>What we want to do is move a project from a path that looks like this:</p>
+<div class="highlight"><pre><span class="p">...</span><span class="o">/</span><span class="n">projects</span><span class="o">/</span><span class="n">some</span><span class="o">-</span><span class="n">project</span><span class="o">-</span><span class="n">name</span>
+</pre></div>
+
+
+<p>To a new repository using the recommended Subversion repository layout, like this:</p>
+<div class="highlight"><pre><span class="p">...</span><span class="o">/</span><span class="n">some</span><span class="o">-</span><span class="n">project</span><span class="o">-</span><span class="n">name</span><span class="o">/</span><span class="n">trunk</span>
+</pre></div>
+
+
+<p>Our lives are complicated by the fact that there has been a lot of mobility (renames/moves) of projects within the repository.</p>
+<h1>Setup</h1>
+<p>We'll set up a test environment that will demonstrate the problem and our solution.</p>
+<ol>
+<li>
+<p>Create the empty repositories:</p>
+<div class="highlight"><pre><span class="n">set</span> <span class="o">-</span><span class="n">x</span>
+<span class="n">rm</span> <span class="o">-</span><span class="n">rf</span> <span class="n">work</span> <span class="o">&amp;&amp;</span> <span class="n">mkdir</span> <span class="n">work</span>
+<span class="n">cd</span> <span class="n">work</span>
+<span class="n">WORKDIR</span><span class="o">=</span><span class="err">$</span><span class="p">(</span><span class="n">pwd</span><span class="p">)</span>
+<span class="n">mkdir</span> <span class="n">repos</span>
+
+<span class="cp"># create source repository</span>
+<span class="n">svnadmin</span> <span class="n">create</span> <span class="n">repos</span><span class="o">/</span><span class="n">src</span>
+
+<span class="cp"># create destination reposiory</span>
+<span class="n">svnadmin</span> <span class="n">create</span> <span class="n">repos</span><span class="o">/</span><span class="n">dst</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>Create our desired repository structure in the destination repository:</p>
+<div class="highlight"><pre><span class="n">svn</span> <span class="n">mkdir</span> <span class="o">-</span><span class="n">m</span> <span class="err">&#39;</span><span class="n">create</span> <span class="n">trunk</span><span class="err">&#39;</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst/trunk</span>
+<span class="n">svn</span> <span class="n">mkdir</span> <span class="o">-</span><span class="n">m</span> <span class="err">&#39;</span><span class="n">create</span> <span class="n">branches</span><span class="err">&#39;</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst/branches</span>
+<span class="n">svn</span> <span class="n">mkdir</span> <span class="o">-</span><span class="n">m</span> <span class="err">&#39;</span><span class="n">create</span> <span class="n">tags</span><span class="err">&#39;</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst/tags</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>Create a simple revision history:</p>
+<div class="highlight"><pre><span class="n">svn</span> <span class="n">co</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/src src</span>
+<span class="p">(</span>
+<span class="n">cd</span> <span class="n">src</span>
+
+<span class="cp"># Create our initial set of projects.</span>
+<span class="n">mkdir</span> <span class="n">projects</span>
+<span class="n">mkdir</span> <span class="n">projects</span><span class="o">/</span><span class="p">{</span><span class="n">project1</span><span class="p">,</span><span class="n">project2</span><span class="p">}</span>
+<span class="n">touch</span> <span class="n">projects</span><span class="o">/</span><span class="n">project1</span><span class="o">/</span><span class="p">{</span><span class="n">file11</span><span class="p">,</span><span class="n">file12</span><span class="p">}</span>
+<span class="n">touch</span> <span class="n">projects</span><span class="o">/</span><span class="n">project2</span><span class="o">/</span><span class="p">{</span><span class="n">file21</span><span class="p">,</span><span class="n">file22</span><span class="p">}</span>
+<span class="n">svn</span> <span class="n">add</span> <span class="o">*</span>
+<span class="n">svn</span> <span class="n">ci</span> <span class="o">-</span><span class="n">m</span> <span class="err">&#39;</span><span class="n">initial</span> <span class="n">commit</span><span class="err">&#39;</span>
+
+<span class="cp"># Relocate a file between projects.</span>
+<span class="n">svn</span> <span class="n">mv</span> <span class="n">projects</span><span class="o">/</span><span class="n">project1</span><span class="o">/</span><span class="n">file11</span> <span class="n">projects</span><span class="o">/</span><span class="n">project2</span><span class="o">/</span>
+<span class="n">svn</span> <span class="n">ci</span> <span class="o">-</span><span class="n">m</span> <span class="err">&#39;</span><span class="n">moved</span> <span class="n">file11</span><span class="err">&#39;</span>
+
+<span class="cp"># Rename a project.</span>
+<span class="n">svn</span> <span class="n">mv</span> <span class="n">projects</span><span class="o">/</span><span class="n">project2</span> <span class="n">projects</span><span class="o">/</span><span class="n">project3</span>
+<span class="n">svn</span> <span class="n">update</span>
+<span class="n">svn</span> <span class="n">ci</span> <span class="o">-</span><span class="n">m</span> <span class="err">&#39;</span><span class="n">renamed</span> <span class="n">project2</span> <span class="n">to</span> <span class="n">project3</span><span class="err">&#39;</span>
+<span class="p">)</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>We can see the structure of the source repository like this:</p>
+<div class="highlight"><pre><span class="n">echo</span> <span class="s">&quot;Contents of source reposiory:&quot;</span>
+<span class="n">svn</span> <span class="n">ls</span> <span class="o">-</span><span class="n">R</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/src</span>
+</pre></div>
+
+
+</li>
+</ol>
+<p>Your output should look something like this:</p>
+<div class="highlight"><pre><span class="n">projects</span><span class="o">/</span>
+<span class="n">projects</span><span class="o">/</span><span class="n">project1</span><span class="o">/</span>
+<span class="n">projects</span><span class="o">/</span><span class="n">project1</span><span class="o">/</span><span class="n">file12</span>
+<span class="n">projects</span><span class="o">/</span><span class="n">project3</span><span class="o">/</span>
+<span class="n">projects</span><span class="o">/</span><span class="n">project3</span><span class="o">/</span><span class="n">file11</span>
+<span class="n">projects</span><span class="o">/</span><span class="n">project3</span><span class="o">/</span><span class="n">file21</span>
+<span class="n">projects</span><span class="o">/</span><span class="n">project3</span><span class="o">/</span><span class="n">file22</span>
+</pre></div>
+
+
+<p>In this example, we'll try to import <em>project3</em> into a new repository.</p>
+<h1>Using Subversion</h1>
+<p>With Subversion, it's easy to extract a single project from the repository:</p>
+<div class="highlight"><pre><span class="n">svn</span> <span class="n">co</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/src/projects/project3</span>
+</pre></div>
+
+
+<p>This gives us a directory called project3 containing the contents of the project. Unfortunately, there are no tools that will allow us to take this working copy and move it into another repository.</p>
+<p>Subversion includes a tool called svnadmin that allows on to perform a number of operations on a Subversion repository, but it requires access to the filesystem instance of the repository (it will not work over the network). This is a substantial limitation if you are working with a repository that is maintained by someone else, but we have the necessary access to our repository.</p>
+<p>The svnadmin command includes a dump operation that serializes a repository -- and its entire revision history -- into a text stream that can be loaded into another repository with a corresponding load operation. We don't want the entire repository, so we'll make use of the svndumpfilter command which, as you might expect, can apply certain filters to the output of svnadmin dump.</p>
+<p>We might try something like this:</p>
+<div class="highlight"><pre><span class="n">svnadmin</span> <span class="n">dump</span> <span class="n">repos</span><span class="o">/</span><span class="n">src</span> <span class="o">|</span>
+  <span class="n">svndumpfilter</span> <span class="n">include</span> <span class="n">projects</span><span class="o">/</span><span class="n">project3</span><span class="o">/</span> <span class="o">|</span>
+  <span class="n">svnadmin</span> <span class="n">load</span> <span class="n">repos</span><span class="o">/</span><span class="n">dst</span>
+</pre></div>
+
+
+<p>Unforunately, this will fail with an error along the lines of:</p>
+<div class="highlight"><pre><span class="n">svndumpfilter</span><span class="o">:</span> <span class="n">Invalid</span> <span class="n">copy</span> <span class="n">source</span> <span class="n">path</span> <span class="s1">&#39;/projects/project2&#39;</span>
+<span class="n">svnadmin</span><span class="o">:</span> <span class="n">Can</span><span class="err">&#39;</span><span class="n">t</span> <span class="n">write</span> <span class="n">to</span> <span class="n">stream</span><span class="o">:</span> <span class="n">Broken</span> <span class="n">pipe</span>
+</pre></div>
+
+
+<p>And if you were to look at the destination repository, you would find projec3 entirely absent:</p>
+<div class="highlight"><pre><span class="n">echo</span> <span class="s">&quot;Contents of destination repository (after dump/filter/load):&quot;</span>
+<span class="n">svn</span> <span class="n">ls</span> <span class="o">-</span><span class="n">R</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst</span>
+</pre></div>
+
+
+<p>And even if it worked we would still have to muck about in the destination repository to create our desired repository layout.</p>
+<h1>Using Git</h1>
+<p><a href="http://git-scm.com/">Git</a> is another version control system, similar in some ways to <a href="http://subversion.tigris.org/">Subversion</a> but designed for distributed operation. If you're not familiar with git there is lots of documentation available online.</p>
+<p>We'll start by checking out <em>project3</em> from the Subversion repository:</p>
+<div class="highlight"><pre><span class="n">rm</span> <span class="o">-</span><span class="n">rf</span> <span class="n">project3</span>
+<span class="n">git</span> <span class="n">svn</span> <span class="n">clone</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/src/projects/project3</span>
+<span class="n">cd</span> <span class="n">project3</span>
+</pre></div>
+
+
+<p>Because we're going to import this code into a new repository we need to erase all references to the source repository:</p>
+<div class="highlight"><pre><span class="n">git</span> <span class="n">branch</span> <span class="o">-</span><span class="n">rD</span> <span class="n">git</span><span class="o">-</span><span class="n">svn</span>
+<span class="n">git</span> <span class="n">config</span> <span class="o">--</span><span class="n">remove</span><span class="o">-</span><span class="n">section</span> <span class="n">svn</span><span class="o">-</span><span class="n">remote</span><span class="p">.</span><span class="n">svn</span>
+<span class="n">rm</span> <span class="o">-</span><span class="n">rf</span> <span class="p">.</span><span class="n">git</span><span class="o">/</span><span class="n">svn</span>
+</pre></div>
+
+
+<p>And now we associate this git repository with the destination Subversion repository:</p>
+<div class="highlight"><pre><span class="n">git</span> <span class="n">svn</span> <span class="n">init</span> <span class="o">-</span><span class="n">s</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst</span>
+<span class="n">git</span> <span class="n">svn</span> <span class="n">fetch</span>
+</pre></div>
+
+
+<p>We now apply the revision history to the trunk of the destination repository and commit the changes:</p>
+<div class="highlight"><pre><span class="n">git</span> <span class="n">rebase</span> <span class="n">trunk</span>
+<span class="n">git</span> <span class="n">svn</span> <span class="n">dcommit</span>
+</pre></div>
+
+
+<p>After all of this, we have exactly what we want -- our project hosted in a new repository with our desired layout. The following commands show the contents of the repository:</p>
+<div class="highlight"><pre><span class="n">echo</span> <span class="s">&quot;Contents of destination repository (after git):&quot;</span>
+<span class="n">svn</span> <span class="n">ls</span> <span class="o">-</span><span class="n">R</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst</span>
+</pre></div>
+
+
+<p>And produce output like this:</p>
+<div class="highlight"><pre><span class="n">branches</span><span class="o">/</span>
+<span class="n">tags</span><span class="o">/</span>
+<span class="n">trunk</span><span class="o">/</span>
+<span class="n">trunk</span><span class="o">/</span><span class="n">file11</span>
+<span class="n">trunk</span><span class="o">/</span><span class="n">file21</span>
+<span class="n">trunk</span><span class="o">/</span><span class="n">file22</span>
+</pre></div>
+
+
+<p>And the revision history of the project is available in the destination repository:</p>
+<div class="highlight"><pre><span class="n">echo</span> <span class="s">&quot;Revision history in destination repository:&quot;</span>
+<span class="n">svn</span> <span class="n">log</span> <span class="n">file</span><span class="o">:</span><span class="c1">//$WORKDIR/repos/dst</span>
+</pre></div>
+
+
+<p>The output will look something like:</p>
+<div class="highlight"><pre><span class="n">Revision</span> <span class="n">history</span> <span class="n">in</span> <span class="n">destination</span> <span class="n">repository</span><span class="o">:</span>
+<span class="o">+</span> <span class="n">svn</span> <span class="n">log</span> <span class="n">file</span><span class="o">:</span><span class="c1">///home/lars/projects/svn-to-svn-via-git/work/repos/dst</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r7</span> <span class="o">|</span> <span class="n">lars</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">46</span><span class="o">:</span><span class="mo">02</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">renamed</span> <span class="n">project2</span> <span class="n">to</span> <span class="n">project3</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r6</span> <span class="o">|</span> <span class="n">lars</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">46</span><span class="o">:</span><span class="mo">02</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">initial</span> <span class="n">commit</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r5</span> <span class="o">|</span> <span class="p">(</span><span class="n">no</span> <span class="n">author</span><span class="p">)</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">45</span><span class="o">:</span><span class="mi">55</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">This</span> <span class="n">is</span> <span class="n">an</span> <span class="n">empty</span> <span class="n">revision</span> <span class="k">for</span> <span class="n">padding</span><span class="p">.</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r4</span> <span class="o">|</span> <span class="p">(</span><span class="n">no</span> <span class="n">author</span><span class="p">)</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">45</span><span class="o">:</span><span class="mi">53</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">This</span> <span class="n">is</span> <span class="n">an</span> <span class="n">empty</span> <span class="n">revision</span> <span class="k">for</span> <span class="n">padding</span><span class="p">.</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r3</span> <span class="o">|</span> <span class="n">lars</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">45</span><span class="o">:</span><span class="mi">52</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">create</span> <span class="n">tags</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r2</span> <span class="o">|</span> <span class="n">lars</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">45</span><span class="o">:</span><span class="mi">52</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">create</span> <span class="n">branches</span>
+<span class="o">------------------------------------------------------------------------</span>
+<span class="n">r1</span> <span class="o">|</span> <span class="n">lars</span> <span class="o">|</span> <span class="mi">2009</span><span class="o">-</span><span class="mo">06</span><span class="o">-</span><span class="mo">03</span> <span class="mi">14</span><span class="o">:</span><span class="mi">45</span><span class="o">:</span><span class="mi">52</span> <span class="o">-</span><span class="mo">0400</span> <span class="p">(</span><span class="n">Wed</span><span class="p">,</span> <span class="mo">03</span> <span class="n">Jun</span> <span class="mi">2009</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span> <span class="n">line</span>
+
+<span class="n">create</span> <span class="n">trunk</span>
+<span class="o">------------------------------------------------------------------------</span>
+</pre></div>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/tag/subversion/index.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

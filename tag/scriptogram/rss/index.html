@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/scriptogram/rss/index.html" rel="self"></atom:link><lastBuildDate>Mon, 05 Nov 2012 00:00:00 -0500</lastBuildDate><item><title>Posting to Scriptogr.am using the API</title><link>http://localhost:8000/posts/2012/11/05/posting-to-scriptogram-using-the-api/</link><description>&lt;p&gt;Scriptogr.am has a &lt;a href="http://scriptogr.am/dashboard/#api_documentation"&gt;very simple api&lt;/a&gt; that allows one to &lt;code&gt;POST&lt;/code&gt; and
+&lt;code&gt;DELETE&lt;/code&gt; articles.  &lt;code&gt;POST&lt;/code&gt;ing an article will place it in the
+appropriate Dropbox directory and make it available on your blog all
+in one step.&lt;/p&gt;
+&lt;p&gt;Here is how you could use this API via Curl:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="s-Atom"&gt;curl&lt;/span&gt; &lt;span class="s-Atom"&gt;\&lt;/span&gt;
+       &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="s-Atom"&gt;d&lt;/span&gt; &lt;span class="s-Atom"&gt;app_key=&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="nv"&gt;APP_KEY&lt;/span&gt; &lt;span class="s-Atom"&gt;\&lt;/span&gt;
+       &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="s-Atom"&gt;d&lt;/span&gt; &lt;span class="s-Atom"&gt;user_id=&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="nv"&gt;USER_ID&lt;/span&gt; &lt;span class="s-Atom"&gt;\&lt;/span&gt;
+       &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="s-Atom"&gt;d&lt;/span&gt; &lt;span class="s-Atom"&gt;name=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;${title:-$1}&amp;quot;&lt;/span&gt; &lt;span class="s-Atom"&gt;\&lt;/span&gt;
+       &lt;span class="s-Atom"&gt;--data&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="s-Atom"&gt;urlencode&lt;/span&gt; &lt;span class="s-Atom"&gt;text@&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="s-Atom"&gt;tmpfile&lt;/span&gt; &lt;span class="s-Atom"&gt;\&lt;/span&gt;
+       &lt;span class="s-Atom"&gt;\&lt;/span&gt;
+       &lt;span class="nn"&gt;http&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="o"&gt;//&lt;/span&gt;&lt;span class="s-Atom"&gt;scriptogr&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="s-Atom"&gt;am&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="s-Atom"&gt;api&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="s-Atom"&gt;article&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="s-Atom"&gt;post&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This assumes that you've registered for an application key and that
+you have configured the value into &lt;code&gt;$APP_KEY&lt;/code&gt; and your Scriptogr.am
+user id into &lt;code&gt;$USER_ID&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;name&lt;/code&gt; attribute is both the title of your article &lt;em&gt;and also&lt;/em&gt; the
+filename (normalized and with a &lt;code&gt;.md&lt;/code&gt; extension).  Your article &lt;em&gt;must
+not&lt;/em&gt; contain the metadata values that are allowed when you're editing
+files directly in the Dropbox directory.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Mon, 05 Nov 2012 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2012-11-05:posts/2012/11/05/posting-to-scriptogram-using-the-api/</guid><category>scriptogr.am</category><category>api</category></item></channel></rss>

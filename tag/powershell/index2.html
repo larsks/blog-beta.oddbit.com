@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged powershell</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>powershell</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/11/04/waiting-for-networking-using-powershell/">Sun 04 November 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/networking/index.html" rel="tag">networking</a>,  <a href="http://localhost:8000/tag/powershell/index.html" rel="tag">powershell</a>,  <a href="http://localhost:8000/tag/windows/index.html" rel="tag">windows</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/11/04/waiting-for-networking-using-powershell/" title="Permalink to Waiting for networking using PowerShell" rel="bookmark">Waiting for networking using PowerShell</a>
+		</h2>
+		<div class="entry-content">
+			<p>I've recently been exploring the world of Windows scripting, and I ran
+into a small problem: I was running a script at system startup, and
+the script was running before the network interface (which was using
+DHCP) was configured.</p>
+<p>There are a number of common solutions proposed to this problem:</p>
+<ul>
+<li>
+<p>Just wait for some period of time.</p>
+<p>This can work but it's ugly, and because it doesn't actually
+verify the network state it can result in things breaking if some
+problem prevents Windows from pulling a valid DHCP lease.
+- Use ping to verify the availability of some remote host.</p>
+<p>This works reasonably well if you have a known endpoint you can
+test, but it's hard to make a generic solution using this method.</p>
+</li>
+</ul>
+<p>What I really wanted to do was to have my script wait until a default
+gateway appeared on the system (which would indicate that Windows had
+successfully acquired a DHCP lease and had configured the interface).</p>
+<p>My first attempts involved traditional batch scripts (<code>.bat</code>) running
+some variant of <code>route print</code> and searching the output.  This can
+work, but it's ugly, and I was certain there must be a better way.  I
+spent some time learning about accessing network configuration
+information using PowerShell, and I came up with <a href="https://gist.github.com/4011808">the following
+code</a>:</p>
+<div class="highlight"><pre><span class="err">#</span> <span class="nb">Wait</span> <span class="nb">for</span> <span class="nx">a</span> <span class="nx">DHCP</span><span class="na">-enabled</span> <span class="nx">interface</span> <span class="k">to</span> <span class="nx">develop</span>
+<span class="err">#</span> <span class="nx">a</span> <span class="nb">default</span> <span class="nx">gateway.</span>
+<span class="err">#</span>
+<span class="err">#</span> <span class="nb">usage</span><span class="p">:</span> <span class="nb">wait</span><span class="na">-for-network</span> <span class="err">[</span> <span class="o">&lt;</span><span class="nx">tries</span><span class="o">&gt;</span> <span class="cp">]</span>
+function wait-for-network ($tries) {
+        while (1) {
+    # Get a list of DHCP-enabled interfaces that have a 
+    # non-$null DefaultIPGateway property.
+                $x = gwmi -class Win32_NetworkAdapterConfiguration `
+                        -filter DHCPEnabled=TRUE |
+                                where { $_.DefaultIPGateway -ne $null }
+
+    # If there is (at least) one available, exit the loop.
+                if ( ($x | measure).count -gt 0 ) {
+                        break
+                }
+
+    # If $tries &gt; 0 and we have tried $tries times without
+    # success, throw an exception.
+                if ( $tries -gt 0 -and $try++ -ge $tries ) {
+                        throw &quot;Network unavaiable after $try tries.&quot;
+                }
+
+    # Wait one second.
+                start-sleep -s 1
+        }
+}
+</pre></div>
+
+
+<p>This uses various sort of filtering to get a list of DHCP-enabled
+interfaces that have a default gateway (the <code>DefaultIPGateway</code>
+attribute).  It will poll the state of things once/second up to <code>$tries</code>
+times, and if nothing is available it will ultimately throw an
+exception.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/tag/powershell/index.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

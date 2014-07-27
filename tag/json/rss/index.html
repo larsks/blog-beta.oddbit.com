@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/json/rss/index.html" rel="self"></atom:link><lastBuildDate>Sun, 17 Nov 2013 00:00:00 -0500</lastBuildDate><item><title>json-tools: cli for generating and filtering json</title><link>http://localhost:8000/posts/2013/11/17/json-tools-cli-for-generating-and-filtering-json/</link><description>&lt;p&gt;Interacting with JSON-based APIs from the command line can be
+difficult, and OpenStack is filled with REST APIs that consume or
+produce JSON.   I've just put pair of tools for generating and
+filtering JSON on the command line, called collectively
+&lt;a href="http://github.com/larsks/json-tools/"&gt;json-tools&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Both make use of the Python &lt;a href="https://github.com/akesterson/dpath-python"&gt;dpath&lt;/a&gt; module to populate or filter
+JSON objects.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;jsong&lt;/code&gt; command generates JSON on &lt;code&gt;stdout&lt;/code&gt;.  You provide &lt;code&gt;/&lt;/code&gt;-delimited paths
+on the command line to represent the JSON structure.  For example, if
+you run:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;jsong&lt;/span&gt; &lt;span class="n"&gt;auth&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;passwordCredentials&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;username&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;admin&lt;/span&gt; \
+  &lt;span class="n"&gt;auth&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;passwordCredentials&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;secret&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You get:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="s"&gt;&amp;quot;auth&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="s"&gt;&amp;quot;passwordCredentials&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="s"&gt;&amp;quot;username&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;admin&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; 
+            &lt;span class="s"&gt;&amp;quot;password&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;secret&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The &lt;code&gt;jsonx&lt;/code&gt; command accepts JSON on &lt;code&gt;stdin&lt;/code&gt; and selects subtrees or
+values for output on &lt;code&gt;stdout&lt;/code&gt;.  Given the above output, you could
+extract the password with:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;jsonx&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;v&lt;/span&gt; &lt;span class="n"&gt;auth&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;passwordCredentials&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Which would give you:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;secret&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The &lt;code&gt;-v&lt;/code&gt; flag here indicates that you only want the values of matched
+paths; without the &lt;code&gt;-v&lt;/code&gt; the output would have been:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;auth&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;passwordCredentials&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;password&lt;/span&gt; &lt;span class="n"&gt;secret&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;There are more examples -- including some use of the OpenStack APIs --
+in the &lt;a href="https://github.com/larsks/json-tools/blob/master/README.md"&gt;README&lt;/a&gt; document.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 17 Nov 2013 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2013-11-17:posts/2013/11/17/json-tools-cli-for-generating-and-filtering-json/</guid><category>json</category><category>openstack</category></item></channel></rss>

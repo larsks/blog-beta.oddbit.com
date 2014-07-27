@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Booting an instance with multiple fixed addresses</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2014/05/28/booting-an-instance-with-multiple-fixed-addresses/">Wed 28 May 2014</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/networking/index.html" rel="tag">networking</a>,  <a href="http://localhost:8000/tag/neutron/index.html" rel="tag">neutron</a>,  <a href="http://localhost:8000/tag/openstack/index.html" rel="tag">openstack</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2014/05/28/booting-an-instance-with-multiple-fixed-addresses/" title="Permalink to Booting an instance with multiple fixed addresses" rel="bookmark">Booting an instance with multiple fixed addresses</a>
+		</h2>
+		<div class="entry-content">
+			<p>This article expands on my answer to <a href="https://ask.openstack.org/en/question/30690/add-multiple-specific-ips-to-instance/">Add multiple specific IPs to
+instance</a>, a question posted to <a href="https://ask.openstack.org/">ask.openstack.org</a>.</p>
+<p>In order to serve out SSL services from an OpenStack instance, you
+will generally want one local ip address for each SSL virtual host you
+support.  It is possible to create an instance with multiple fixed
+addresses, but there are a few complications to watch out for.</p>
+<h1>Assumptions</h1>
+<p>This article assumes that the following resources exist:</p>
+<ul>
+<li>a private network <code>net0</code>.</li>
+<li>a private network <code>net0-subnet0</code>, associated with <code>net0</code>, assigned
+  the range <code>10.0.0.0/24</code>.</li>
+<li>a public network <code>external</code> assigned the range <code>192.168.200.0/24</code>.</li>
+<li>an image named <code>fedora-20-x86_64</code>, with hopefully self-evident
+  contents.</li>
+</ul>
+<h1>Creating a port</h1>
+<p>Start by creating a port in Neutron:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">neutron</span> <span class="n">port</span><span class="o">-</span><span class="n">create</span> <span class="n">net0</span> \
+  <span class="o">--</span><span class="n">fixed</span><span class="o">-</span><span class="n">ip</span> <span class="n">subnet_id</span><span class="o">=</span><span class="n">net0</span><span class="o">-</span><span class="n">subnet0</span> \
+  <span class="o">--</span><span class="n">fixed</span><span class="o">-</span><span class="n">ip</span> <span class="n">subnet_id</span><span class="o">=</span><span class="n">net0</span><span class="o">-</span><span class="n">subnet0</span>
+</pre></div>
+
+
+<p>This will create a neutron port to which have been allocated to fixed
+ip addresses from <code>net0-subnet0</code>:</p>
+<div class="highlight"><pre><span class="o">+-----------------------+----------------------------------------------------------------------------------+</span>
+<span class="o">|</span> <span class="n">Field</span>                 <span class="o">|</span> <span class="n">Value</span>                                                                            <span class="o">|</span>
+<span class="o">+-----------------------+----------------------------------------------------------------------------------+</span>
+<span class="o">|</span> <span class="n">admin_state_up</span>        <span class="o">|</span> <span class="n">True</span>                                                                             <span class="o">|</span>
+<span class="o">|</span> <span class="n">allowed_address_pairs</span> <span class="o">|</span>                                                                                  <span class="o">|</span>
+<span class="o">|</span> <span class="n">binding</span><span class="o">:</span><span class="n">vnic_type</span>     <span class="o">|</span> <span class="n">normal</span>                                                                           <span class="o">|</span>
+<span class="o">|</span> <span class="n">device_id</span>             <span class="o">|</span>                                                                                  <span class="o">|</span>
+<span class="o">|</span> <span class="n">device_owner</span>          <span class="o">|</span>                                                                                  <span class="o">|</span>
+<span class="o">|</span> <span class="n">fixed_ips</span>             <span class="o">|</span> <span class="p">{</span><span class="s">&quot;subnet_id&quot;</span><span class="o">:</span> <span class="s">&quot;f8ca90fd-cb82-4218-9627-6fa66e4c9c3c&quot;</span><span class="p">,</span> <span class="s">&quot;ip_address&quot;</span><span class="o">:</span> <span class="s">&quot;10.0.0.18&quot;</span><span class="p">}</span> <span class="o">|</span>
+<span class="o">|</span>                       <span class="o">|</span> <span class="p">{</span><span class="s">&quot;subnet_id&quot;</span><span class="o">:</span> <span class="s">&quot;f8ca90fd-cb82-4218-9627-6fa66e4c9c3c&quot;</span><span class="p">,</span> <span class="s">&quot;ip_address&quot;</span><span class="o">:</span> <span class="s">&quot;10.0.0.19&quot;</span><span class="p">}</span> <span class="o">|</span>
+<span class="o">|</span> <span class="n">id</span>                    <span class="o">|</span> <span class="mi">3</span><span class="n">c564dd5</span><span class="o">-</span><span class="n">fd45</span><span class="o">-</span><span class="mf">4f</span><span class="mi">61</span><span class="o">-</span><span class="mi">88</span><span class="n">df</span><span class="o">-</span><span class="mf">715f</span><span class="mi">71667</span><span class="n">b3b</span>                                             <span class="o">|</span>
+<span class="o">|</span> <span class="n">mac_address</span>           <span class="o">|</span> <span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">e1</span><span class="o">:</span><span class="mi">15</span><span class="o">:</span><span class="mf">7f</span>                                                                <span class="o">|</span>
+<span class="o">|</span> <span class="n">name</span>                  <span class="o">|</span>                                                                                  <span class="o">|</span>
+<span class="o">|</span> <span class="n">network_id</span>            <span class="o">|</span> <span class="n">bb4e5e37</span><span class="o">-</span><span class="mf">74e1</span><span class="o">-</span><span class="mi">41</span><span class="n">bd</span><span class="o">-</span><span class="mi">880</span><span class="n">e</span><span class="o">-</span><span class="n">b59e94236c5e</span>                                             <span class="o">|</span>
+<span class="o">|</span> <span class="n">security_groups</span>       <span class="o">|</span> <span class="mf">52f</span><span class="mi">7</span><span class="n">a87c</span><span class="o">-</span><span class="mf">380f</span><span class="o">-</span><span class="mi">4</span><span class="n">a07</span><span class="o">-</span><span class="n">a6ff</span><span class="o">-</span><span class="n">d64be495f25b</span>                                             <span class="o">|</span>
+<span class="o">|</span> <span class="n">status</span>                <span class="o">|</span> <span class="n">DOWN</span>                                                                             <span class="o">|</span>
+<span class="o">|</span> <span class="n">tenant_id</span>             <span class="o">|</span> <span class="mi">4</span><span class="n">dfe8e38f68449b6a0c9cd73037726f7</span>                                                 <span class="o">|</span>
+<span class="o">+-----------------------+----------------------------------------------------------------------------------+</span>
+</pre></div>
+
+
+<p>If you want, you can specify an explicit set of addresses rather than
+having neutron allocate them for you:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">neutron</span> <span class="n">port</span><span class="o">-</span><span class="n">create</span> <span class="n">net0</span> \
+  <span class="o">--</span><span class="n">fixed</span><span class="o">-</span><span class="n">ip</span> <span class="n">subnet_id</span><span class="o">=</span><span class="n">net0</span><span class="o">-</span><span class="n">subnet0</span><span class="p">,</span><span class="n">ip_address</span><span class="o">=</span><span class="mf">10.0.0.18</span> \
+  <span class="o">--</span><span class="n">fixed</span><span class="o">-</span><span class="n">ip</span> <span class="n">subnet_id</span><span class="o">=</span><span class="n">net0</span><span class="o">-</span><span class="n">subnet0</span><span class="p">,</span><span class="n">ip_address</span><span class="o">=</span><span class="mf">10.0.0.19</span>
+</pre></div>
+
+
+<h1>Boot an instance</h1>
+<p>You can boot an instance using this port using the <code>port-id=...</code>
+parameter to the <code>--nic</code> option:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">nova</span> <span class="n">boot</span> \
+  <span class="o">--</span><span class="n">nic</span> <span class="n">port</span><span class="o">-</span><span class="n">id</span><span class="o">=</span><span class="mi">3</span><span class="n">c564dd5</span><span class="o">-</span><span class="n">fd45</span><span class="o">-</span><span class="mf">4f</span><span class="mi">61</span><span class="o">-</span><span class="mi">88</span><span class="n">df</span><span class="o">-</span><span class="mf">715f</span><span class="mi">71667</span><span class="n">b3b</span> \
+  <span class="o">--</span><span class="n">flavor</span> <span class="n">m1</span><span class="p">.</span><span class="n">tiny</span> \
+  <span class="o">--</span><span class="n">image</span> <span class="n">fedora</span><span class="o">-</span><span class="mi">20</span><span class="o">-</span><span class="n">x86_64</span> \
+  <span class="o">--</span><span class="n">key</span><span class="o">-</span><span class="n">name</span> <span class="n">lars</span> <span class="n">test0</span>
+</pre></div>
+
+
+<p>This is where the first complication arises: the instance will boot
+and receive a DHCP lease for one of the fixed addresses you created,
+but you don't know which one.  This isn't an insurmountable problem;
+you can assign floating ips to each one and then try logging in to
+both and see which works.</p>
+<p>Rather than playing network roulette, you can pass in a script via the
+<code>--user-data</code> option that will take care of configuring the network
+correctly.  For example, something like this:</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23</pre></div></td><td class="code"><div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+cat &gt; /etc/sysconfig/network-scripts/ifcfg-eth0 <span class="s">&lt;&lt;EOF</span>
+<span class="s">DEVICE=eth0</span>
+<span class="s">BOOTPROTO=none</span>
+<span class="s">IPADDR=10.0.0.18</span>
+<span class="s">NETMASK=255.255.255.0</span>
+<span class="s">GATEWAY=10.0.0.1</span>
+<span class="s">ONBOOT=yes</span>
+<span class="s">EOF</span>
+
+cat &gt; /etc/sysconfig/network-scripts/ifcfg-eth0:0 <span class="s">&lt;&lt;EOF</span>
+<span class="s">DEVICE=eth0:0</span>
+<span class="s">BOOTPROTO=none</span>
+<span class="s">IPADDR=10.0.0.19</span>
+<span class="s">NETMASK=255.255.255.0</span>
+<span class="s">GATEWAY=10.0.0.1</span>
+<span class="s">ONBOOT=yes</span>
+<span class="s">EOF</span>
+
+ifdown eth0
+ifup eth0
+ifup eth0:0
+</pre></div>
+</td></tr></table>
+
+<p>And boot the instance like this:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">nova</span> <span class="n">boot</span> <span class="o">--</span><span class="n">nic</span> <span class="n">port</span><span class="o">-</span><span class="n">id</span><span class="o">=</span><span class="mi">3</span><span class="n">c564dd5</span><span class="o">-</span><span class="n">fd45</span><span class="o">-</span><span class="mf">4f</span><span class="mi">61</span><span class="o">-</span><span class="mi">88</span><span class="n">df</span><span class="o">-</span><span class="mf">715f</span><span class="mi">71667</span><span class="n">b3b</span> \
+  <span class="o">--</span><span class="n">flavor</span> <span class="n">m1</span><span class="p">.</span><span class="n">tiny</span> <span class="o">--</span><span class="n">image</span> <span class="n">fedora</span><span class="o">-</span><span class="mi">20</span><span class="o">-</span><span class="n">x86_64</span> <span class="o">--</span><span class="n">key</span><span class="o">-</span><span class="n">name</span> <span class="n">lars</span> \
+  <span class="o">--</span><span class="n">user</span><span class="o">-</span><span class="n">data</span> <span class="n">userdata</span><span class="p">.</span><span class="n">txt</span> <span class="n">test0</span>
+</pre></div>
+
+
+<p>Assuming that your image uses <a href="http://cloudinit.readthedocs.org/en/latest/">cloud-init</a> or something similar, it
+should execute the <code>user-data</code> script at boot and set up the
+persistent network configuration.</p>
+<p>At this stage, you can verify that both addresses have been assigned
+by using the <code>ip netns</code> command to run <code>ping</code> inside an appropriate
+namespace.  Something like:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">sudo</span> <span class="n">ip</span> <span class="n">netns</span> <span class="n">exec</span> <span class="n">qdhcp</span><span class="o">-</span><span class="n">bb4e5e37</span><span class="o">-</span><span class="mf">74e1</span><span class="o">-</span><span class="mi">41</span><span class="n">bd</span><span class="o">-</span><span class="mi">880</span><span class="n">e</span><span class="o">-</span><span class="n">b59e94236c5e</span> <span class="n">ping</span> <span class="o">-</span><span class="n">c1</span> <span class="mf">10.0.0.18</span>
+<span class="n">PING</span> <span class="mf">10.0.0.18</span> <span class="p">(</span><span class="mf">10.0.0.18</span><span class="p">)</span> <span class="mi">56</span><span class="p">(</span><span class="mi">84</span><span class="p">)</span> <span class="n">bytes</span> <span class="n">of</span> <span class="n">data</span><span class="p">.</span>
+<span class="mi">64</span> <span class="n">bytes</span> <span class="n">from</span> <span class="mf">10.0.0.18</span><span class="o">:</span> <span class="n">icmp_seq</span><span class="o">=</span><span class="mi">1</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">64</span> <span class="n">time</span><span class="o">=</span><span class="mf">1.60</span> <span class="n">ms</span>
+
+<span class="o">---</span> <span class="mf">10.0.0.18</span> <span class="n">ping</span> <span class="n">statistics</span> <span class="o">---</span>
+<span class="mi">1</span> <span class="n">packets</span> <span class="n">transmitted</span><span class="p">,</span> <span class="mi">1</span> <span class="n">received</span><span class="p">,</span> <span class="mi">0</span><span class="o">%</span> <span class="n">packet</span> <span class="n">loss</span><span class="p">,</span> <span class="n">time</span> <span class="mi">0</span><span class="n">ms</span>
+<span class="n">rtt</span> <span class="n">min</span><span class="o">/</span><span class="n">avg</span><span class="o">/</span><span class="n">max</span><span class="o">/</span><span class="n">mdev</span> <span class="o">=</span> <span class="mf">1.606</span><span class="o">/</span><span class="mf">1.606</span><span class="o">/</span><span class="mf">1.606</span><span class="o">/</span><span class="mf">0.000</span> <span class="n">ms</span>
+
+<span class="err">$</span> <span class="n">sudo</span> <span class="n">ip</span> <span class="n">netns</span> <span class="n">exec</span> <span class="n">qdhcp</span><span class="o">-</span><span class="n">bb4e5e37</span><span class="o">-</span><span class="mf">74e1</span><span class="o">-</span><span class="mi">41</span><span class="n">bd</span><span class="o">-</span><span class="mi">880</span><span class="n">e</span><span class="o">-</span><span class="n">b59e94236c5e</span> <span class="n">ping</span> <span class="o">-</span><span class="n">c1</span> <span class="mf">10.0.0.19</span>
+<span class="n">PING</span> <span class="mf">10.0.0.19</span> <span class="p">(</span><span class="mf">10.0.0.19</span><span class="p">)</span> <span class="mi">56</span><span class="p">(</span><span class="mi">84</span><span class="p">)</span> <span class="n">bytes</span> <span class="n">of</span> <span class="n">data</span><span class="p">.</span>
+<span class="mi">64</span> <span class="n">bytes</span> <span class="n">from</span> <span class="mf">10.0.0.19</span><span class="o">:</span> <span class="n">icmp_seq</span><span class="o">=</span><span class="mi">1</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">64</span> <span class="n">time</span><span class="o">=</span><span class="mf">1.60</span> <span class="n">ms</span>
+
+<span class="o">---</span> <span class="mf">10.0.0.19</span> <span class="n">ping</span> <span class="n">statistics</span> <span class="o">---</span>
+<span class="mi">1</span> <span class="n">packets</span> <span class="n">transmitted</span><span class="p">,</span> <span class="mi">1</span> <span class="n">received</span><span class="p">,</span> <span class="mi">0</span><span class="o">%</span> <span class="n">packet</span> <span class="n">loss</span><span class="p">,</span> <span class="n">time</span> <span class="mi">0</span><span class="n">ms</span>
+<span class="n">rtt</span> <span class="n">min</span><span class="o">/</span><span class="n">avg</span><span class="o">/</span><span class="n">max</span><span class="o">/</span><span class="n">mdev</span> <span class="o">=</span> <span class="mf">1.701</span><span class="o">/</span><span class="mf">1.701</span><span class="o">/</span><span class="mf">1.701</span><span class="o">/</span><span class="mf">0.000</span> <span class="n">ms</span>
+</pre></div>
+
+
+<p>This assumes that the UUID of the <code>net0</code> network is <code>bb4e5e37-74e1-41bd-880e-b59e94236c5e</code>.  On your system, the namespace will be something different.</p>
+<h1>Assign floating ips</h1>
+<p>Assign a floating ip address to each of the fixed addresses.  You will
+need to use the <code>--fixed-address</code> option to <code>nova add-floating-ip</code>:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">nova</span> <span class="n">add</span><span class="o">-</span><span class="n">floating</span><span class="o">-</span><span class="n">ip</span> <span class="o">--</span><span class="n">fixed</span><span class="o">-</span><span class="n">address</span> <span class="mf">10.0.0.19</span> <span class="n">test0</span> <span class="mf">192.168.200.6</span>
+<span class="err">$</span> <span class="n">nova</span> <span class="n">add</span><span class="o">-</span><span class="n">floating</span><span class="o">-</span><span class="n">ip</span> <span class="o">--</span><span class="n">fixed</span><span class="o">-</span><span class="n">address</span> <span class="mf">10.0.0.18</span> <span class="n">test0</span> <span class="mf">192.168.200.4</span>
+</pre></div>
+
+
+<p>With these changes in place, the system is accessible via either
+address:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">ssh</span> <span class="n">fedora</span><span class="err">@</span><span class="mf">192.168.200.4</span> <span class="n">uptime</span>
+  <span class="mi">14</span><span class="o">:</span><span class="mi">51</span><span class="o">:</span><span class="mi">52</span> <span class="n">up</span> <span class="mi">4</span> <span class="n">min</span><span class="p">,</span>  <span class="mi">0</span> <span class="n">users</span><span class="p">,</span>  <span class="n">load</span> <span class="n">average</span><span class="o">:</span> <span class="mf">0.00</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">,</span> <span class="mf">0.02</span>
+<span class="err">$</span> <span class="n">ssh</span> <span class="n">fedora</span><span class="err">@</span><span class="mf">192.168.200.6</span> <span class="n">uptime</span>
+  <span class="mi">14</span><span class="o">:</span><span class="mi">51</span><span class="o">:</span><span class="mi">54</span> <span class="n">up</span> <span class="mi">4</span> <span class="n">min</span><span class="p">,</span>  <span class="mi">0</span> <span class="n">users</span><span class="p">,</span>  <span class="n">load</span> <span class="n">average</span><span class="o">:</span> <span class="mf">0.00</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">,</span> <span class="mf">0.02</span>
+</pre></div>
+
+
+<p>And looking at the network configuration on the system, we can see
+that both addresses have been assigned to <code>eth0</code> as expected:</p>
+<div class="highlight"><pre><span class="err">$</span> <span class="n">ssh</span> <span class="n">fedora</span><span class="err">@</span><span class="mf">192.168.200.4</span> <span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">ip</span> <span class="n">a</span>
+<span class="p">[...]</span>
+<span class="mi">2</span><span class="o">:</span> <span class="n">eth0</span><span class="o">:</span> <span class="o">&lt;</span><span class="n">BROADCAST</span><span class="p">,</span><span class="n">MULTICAST</span><span class="p">,</span><span class="n">UP</span><span class="p">,</span><span class="n">LOWER_UP</span><span class="o">&gt;</span> <span class="n">mtu</span> <span class="mi">1500</span> <span class="n">qdisc</span> <span class="n">pfifo_fast</span> <span class="n">state</span> <span class="n">UP</span> <span class="n">group</span> <span class="k">default</span> <span class="n">qlen</span> <span class="mi">1000</span>
+    <span class="n">link</span><span class="o">/</span><span class="n">ether</span> <span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">bf</span><span class="o">:</span><span class="n">f9</span><span class="o">:</span><span class="mi">6</span><span class="n">a</span> <span class="n">brd</span> <span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span>
+    <span class="n">inet</span> <span class="mf">10.0.0.18</span><span class="o">/</span><span class="mi">24</span> <span class="n">brd</span> <span class="mf">10.0.0.255</span> <span class="n">scope</span> <span class="n">global</span> <span class="n">eth0</span>
+       <span class="n">valid_lft</span> <span class="n">forever</span> <span class="n">preferred_lft</span> <span class="n">forever</span>
+    <span class="n">inet</span> <span class="mf">10.0.0.19</span><span class="o">/</span><span class="mi">24</span> <span class="n">brd</span> <span class="mf">10.0.0.255</span> <span class="n">scope</span> <span class="n">global</span> <span class="n">secondary</span> <span class="n">eth0</span><span class="o">:</span><span class="mi">0</span>
+       <span class="n">valid_lft</span> <span class="n">forever</span> <span class="p">...</span>
+</pre></div>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

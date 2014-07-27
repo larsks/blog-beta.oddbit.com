@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Capturing Envoy Data</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/02/22/capturing-envoy-data/">Wed 22 February 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/02/22/capturing-envoy-data/" title="Permalink to Capturing Envoy Data" rel="bookmark">Capturing Envoy Data</a>
+		</h2>
+		<div class="entry-content">
+			<p>Pursuant to my <a href="http://blog.oddbit.com/2012/02/13/enphase-envoy-xml-data-format/">last post</a>, I've written a simple man-in-the-middle proxy to intercept communication between the Envoy and the Enphase servers. The code is available <a href="https://github.com/larsks/envoy-tools">here</a>.  </p>
+<h2>What it does</h2>
+<p>As I detailed in my previous post, the Envoy sends data to Enphase via http <code>POST</code> requests. The proxy intercepts these requests, extracts the XML data from the request, and writes it to a local file (by default in <code>/var/spool/envoy</code>). It then forwards the request on to Enphase, and returns the reply to your Envoy.  </p>
+<p>In addition to extracting the XML data, the proxy also logs the complete contents (headers and message content) of the request and the reply to files.  </p>
+<h2>How it works</h2>
+<p>Out of the box, your Envoy configures itself automatically using DHCP. Possibly, you've configured it statically. In either case, it will typically be configured to connect via your default gateway -- generally, your home router, cable modem, etc. In order to intercept the communication between the Envoy and Enphase, we insert another server between the Envoy and your network gateway. In the foollowing diagram, the dotted line represents the original communication path, while the solid lines represent the new communication path:  </p>
+<p><img alt="" src="/assets/envoy-capture.png" /></p>
+<p>The intermediate system -- which we'll call the interceptor -- will use a few tricks to redirect traffic destined for Enphase to the local proxy (which will log the data locally and then forward it on to Enphase).  </p>
+<h2>Assumptions</h2>
+<p>For the purposes of this article, we'll assume that your Envoy is at address 192.168.1.100, and the address of the interceptor is 192.168.1.200.  </p>
+<p>I'm assuming that your interceptor is running Linux. It may be possible to accomplish the same thing with other tools, but I'm relying on the Linux netfilter subsystem (aka "iptables") to perform certain key tasks.  </p>
+<h2>Configuring the Envoy</h2>
+<p>You will need to congfigure the Envoy to use your interceptor host as its default gateway.  </p>
+<ol>
+<li>Go to the <a href="http://192.168.1.100/admin/lib/network_display?locale=en">network connectivity</a> page on your Envoy.</li>
+<li>If it's checked, uncheck the "Use DHCP" setting and select the "Updating DHCP setting" button.</li>
+<li>Set the "Gateway IP" field to the address of your interceptor (192.168.1.200 in this example).</li>
+<li>Select the "Update Interface 0" button.</li>
+</ol>
+<h2>Configuring the interceptor</h2>
+<h3>Redirecting requests</h3>
+<p>We need to configure the interceptor to redirect requests to the Enphase servers to a local application. We'll add the following firewall rule:  </p>
+<div class="highlight"><pre><span class="n">iptables</span> <span class="o">-</span><span class="n">t</span> <span class="n">nat</span> <span class="o">-</span><span class="n">A</span> <span class="n">PREROUTING</span> <span class="o">-</span><span class="n">s</span> <span class="mf">192.168.1.100</span> <span class="o">-</span><span class="n">p</span> <span class="n">tcp</span> \
+  <span class="o">--</span><span class="n">dport</span> <span class="mi">443</span> <span class="o">-</span><span class="n">j</span> <span class="n">REDIRECT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">ports</span> <span class="mi">4430</span>
+</pre></div>
+
+
+<p>This rule matches https (port 443) requests from your Envoy (192.168.1.100) and redirects them to port 4430 on the interceptor.<br />
+Note that this rule will be lost if you reboot your system. Making firewall rules persistent is beyond the scope of this article; consult the documentation for your distribution of choice.  </p>
+<h3>Handling SSL</h3>
+<p>My simple Python proxy doesn't speak SSL, so we need to create a plain http request from the https request. Normally this would be difficult, but Enphase has made our life easier by not checking the validity of the SSL certificate. We're going to use <a href="http://www.stunnel.org/">stunnel</a> as an https-to-http proxy. Create a file called /etc/stunnel/envoy-ssl.conf with the following contents:  </p>
+<div class="highlight"><pre><span class="k">[https_in]</span>
+<span class="na">accept</span> <span class="o">=</span> <span class="s">4430</span>
+<span class="na">cert</span> <span class="o">=</span> <span class="s">/etc/pki/tls/certs/localhost.crt</span>
+<span class="na">connect</span> <span class="o">=</span> <span class="s">127.0.0.1:8080</span>
+</pre></div>
+
+
+<p>Run stunnel with this configuration:  </p>
+<div class="highlight"><pre><span class="n">stunnel</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">stunnel</span><span class="o">/</span><span class="n">envoy</span><span class="o">-</span><span class="n">ssl</span><span class="p">.</span><span class="n">conf</span>
+</pre></div>
+
+
+<p>This assumes you have an SSL certificate in /etc/pki/tls/certs/localhost.crt. You will probably need to generate one, which again is left as an exercise to the reader.  </p>
+<h3>Installing bottle</h3>
+<p>The proxy relies on the <a href="http://bottlepy.org/">bottle</a> Python web framework, which is probably not installed on your system. The easiest way to get things going is to install a Python "virtual environment" with the appropriate modules. Create a new virtual environment:</p>
+<div class="highlight"><pre><span class="n">virtualenv</span> <span class="o">~/</span><span class="n">env</span><span class="o">/</span><span class="n">envoy</span>
+</pre></div>
+
+
+<p>And install bottle:</p>
+<div class="highlight"><pre><span class="o">~/</span><span class="n">env</span><span class="o">/</span><span class="n">envoy</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">pip</span> <span class="n">install</span> <span class="n">bottle</span>
+</pre></div>
+
+
+<h3>Creating directories</h3>
+<p>By default the proxy will write data to /var/spool/envoy. You'll need to make sure this directory exists and is writable by whatever account you're using to run the proxy.</p>
+<h2>Running the proxy</h2>
+<p>Now that you've got all the prerequisites in place, you should be able to start the proxy by running:</p>
+<div class="highlight"><pre><span class="o">~/</span><span class="n">env</span><span class="o">/</span><span class="n">envoy</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">python</span> <span class="n">proxy</span><span class="p">.</span><span class="n">py</span>
+</pre></div>
+
+
+<p>You should see something like this:</p>
+<div class="highlight"><pre><span class="n">Bottle</span> <span class="n">server</span> <span class="n">starting</span> <span class="n">up</span> <span class="p">(</span><span class="n">using</span> <span class="n">WSGIRefServer</span><span class="p">())...</span>
+<span class="n">Listening</span> <span class="n">on</span> <span class="n">http</span><span class="o">:</span><span class="c1">//127.0.0.1:8080/</span>
+<span class="n">Hit</span> <span class="n">Ctrl</span><span class="o">-</span><span class="n">C</span> <span class="n">to</span> <span class="n">quit</span><span class="p">.</span>
+</pre></div>
+
+
+<p>Assuming that everything else went as planned, sometime within the next five minutes you should see the proxy service a request from your Envoy:</p>
+<div class="highlight"><pre><span class="n">localhost</span><span class="p">.</span><span class="n">localdomain</span> <span class="o">-</span> <span class="o">-</span> <span class="p">[</span><span class="mi">22</span><span class="o">/</span><span class="n">Feb</span><span class="o">/</span><span class="mi">2012</span> <span class="mi">09</span><span class="o">:</span><span class="mo">03</span><span class="o">:</span><span class="mi">57</span><span class="p">]</span> <span class="s">&quot;POST /emu_reports/</span>
+<span class="n">performance_report</span><span class="o">?</span><span class="n">webcomm_version</span><span class="o">=</span><span class="mf">3.0</span> <span class="n">HTTP</span><span class="o">/</span><span class="mf">1.1</span><span class="s">&quot; 200 103</span>
+</pre></div>
+
+
+<p>From this request you will end up with three files in /var/spool/envoy:</p>
+<ul>
+<li>
+<p><code>2012-02-22T09:03:01-0j1FFs.xml</code><br />
+  This is the XML data from the Envoy and is probably the most interesting file.</p>
+</li>
+<li>
+<p><code>2012-02-22T09:03:01-ZMxw6b.request</code><br />
+  This is the raw request from the Envoy.</p>
+</li>
+<li>
+<p><code>2012-02-22T09:03:02-NB4DbR.response</code> <br />
+  This is the response from the Enphase servers.</p>
+</li>
+</ul>
+<p>If you find some bugs, please let me know by creating a new issue <a href="https://github.com/larsks/envoy-tools/issues">here</a>. Note that this is only for bugs in the code; if you need basic networking tutorials and so forth the Google has lots of help for you.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged javascript</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>javascript</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2013/11/23/long-polling-with-javascript-and-python/">Sat 23 November 2013</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/bottle/index.html" rel="tag">bottle</a>,  <a href="http://localhost:8000/tag/gevent/index.html" rel="tag">gevent</a>,  <a href="http://localhost:8000/tag/javascript/index.html" rel="tag">javascript</a>,  <a href="http://localhost:8000/tag/jquery/index.html" rel="tag">jquery</a>,  <a href="http://localhost:8000/tag/python/index.html" rel="tag">python</a>,  <a href="http://localhost:8000/tag/zeromq/index.html" rel="tag">zeromq</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2013/11/23/long-polling-with-javascript-and-python/" title="Permalink to Long polling with Javascript and Python" rel="bookmark">Long polling with Javascript and Python</a>
+		</h2>
+		<div class="entry-content">
+			<p>In this post I'm going to step through an example web chat system
+implemented in Python (with <a href="http://bottlepy.org/docs/">Bottle</a> and <a href="http://www.gevent.org/">gevent</a>) that uses long
+polling to implement a simple publish/subscribe mechanism for
+efficiently updating connected clients.</p>
+<p>My <a href="http://github.com/larsks/pusub_example/">pubsub_example</a> repository on <a href="http://github.com/">GitHub</a> has a complete
+project that implements the ideas discussed in this article.  This
+project can be deployed directly on <a href="http://openshift.com/">OpenShift</a> if you want to try
+things out on your own.  You can also try it out online at
+<a href="http://pubsub.example.oddbit.com/">http://pubsub.example.oddbit.com/</a>.</p>
+<!-- more -->
+
+<h2>What is long polling?</h2>
+<p>Long polling is a technique used in web applications to enable a
+low-latency response to server messages without the CPU or traffic
+overhead of high frequency polling.</p>
+<p>A client makes a request to the web server, but rather than responding
+immediately the server holds the connection (for a potentially lengthy
+time), and only response when data is available.  The client will
+react to this data and then restart the poll and wait for more data.</p>
+<h2>Long polling with Jquery</h2>
+<p>I've opted to use <a href="http://jquery.com/">jquery</a> as part of my client-side implementation,
+because I've used it a little in the past and it simplifies things a
+great deal.</p>
+<p>There are a number of articles out there that describe the client-side
+implementation of long polling using jquery.  <a href="http://techoctave.com/c7/posts/60-simple-long-polling-example-with-javascript-and-jquery">This</a>
+article from Seventh Octave gives what is a typical example:</p>
+<div class="highlight"><pre><span class="p">(</span><span class="kd">function</span> <span class="nx">poll</span><span class="p">(){</span>
+  <span class="nx">$</span><span class="p">.</span><span class="nx">ajax</span><span class="p">({</span>
+    <span class="nx">url</span><span class="o">:</span> <span class="s2">&quot;/poll&quot;</span><span class="p">,</span>
+    <span class="nx">success</span><span class="o">:</span> <span class="kd">function</span> <span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+      <span class="nx">do_something_with</span><span class="p">(</span><span class="nx">data</span><span class="p">);</span>
+    <span class="p">},</span>
+    <span class="nx">dataType</span><span class="o">:</span> <span class="s2">&quot;json&quot;</span><span class="p">,</span>
+    <span class="nx">complete</span><span class="o">:</span> <span class="nx">poll</span><span class="p">,</span>
+    <span class="nx">timeout</span><span class="o">:</span> <span class="mi">30000</span>
+  <span class="p">});</span>
+<span class="p">})();</span>
+</pre></div>
+
+
+<p>This defines a function <code>poll()</code> that gets called automatically.
+Because I'm not a JavaScript person it took me a moment to figure out
+exactly how that worked.  So that you are less mysified than I: The
+basic structure of this function is:</p>
+<div class="highlight"><pre><span class="p">(</span><span class="kd">function</span> <span class="nx">poll</span><span class="p">()</span> <span class="p">{...})();</span>
+</pre></div>
+
+
+<p>Since the <code>function</code> keyword returns a value (a reference to the
+defined function), we can call that reference immediately.  This
+construct is entirely equivalent to:</p>
+<div class="highlight"><pre><span class="kd">function</span> <span class="nx">poll</span><span class="p">()</span> <span class="p">{...}</span>
+<span class="nx">poll</span><span class="p">();</span>
+</pre></div>
+
+
+<p>When called, it fires off an asynchronous AJAX request to <code>/poll</code> on
+our server.  If the server sends a response, the browser will call the
+function in the <code>success</code> attribute, which will presumably do
+something useful with the response data.</p>
+<p>It's important not to gloss over the fact that the <a href="http://api.jquery.com/jQuery.ajax/">ajax</a> method is
+called asynchronously.  The <code>poll()</code> function returns immediately when
+it is called, allowing your client to continue processing your
+script(s).</p>
+<p>The callable in the <code>complete</code> attribute will be called at the end of
+the AJAX request, regardless of whether or not the request was
+successful. The use of the <code>timeout</code> attribute ensures that this code
+will not poll more frequently than once every 30 seconds (this helps
+prevent the code from monopolizing the CPU by polling too frequently
+if an error is causing the AJAX request to return immediately).</p>
+<h2>A simple web page</h2>
+<p>Our chat application is going be built around a very simple web page
+with two fields (one for a "nickname", and one for entering messages
+to send) and a container for printing messages received from the
+server.  Stripped of headers and extraneous content, it looks like
+this:</p>
+<div class="highlight"><pre><span class="nt">&lt;form</span> <span class="na">id=</span><span class="s">&quot;chatform&quot;</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;table&gt;</span>
+    <span class="nt">&lt;tr&gt;</span>
+      <span class="nt">&lt;td&gt;</span>
+        <span class="nt">&lt;label</span> <span class="na">for=</span><span class="s">&quot;nick&quot;</span><span class="nt">&gt;</span>Nickname:<span class="nt">&lt;/label&gt;</span>
+      <span class="nt">&lt;/td&gt;</span>
+      <span class="nt">&lt;td&gt;</span>
+        <span class="nt">&lt;input</span> <span class="na">id=</span><span class="s">&quot;nick&quot;</span> <span class="na">size=</span><span class="s">&quot;10&quot;</span> <span class="nt">/&gt;</span>
+      <span class="nt">&lt;/td&gt;</span>
+    <span class="nt">&lt;/tr&gt;</span>
+    <span class="nt">&lt;tr&gt;</span>
+      <span class="nt">&lt;td&gt;</span>
+        <span class="nt">&lt;label</span> <span class="na">for=</span><span class="s">&quot;message&quot;</span><span class="nt">&gt;</span>message:<span class="nt">&lt;/label&gt;</span>
+      <span class="nt">&lt;/td&gt;</span>
+      <span class="nt">&lt;td&gt;</span>
+        <span class="nt">&lt;input</span> <span class="na">id=</span><span class="s">&quot;message&quot;</span> <span class="na">size=</span><span class="s">&quot;40&quot;</span> <span class="nt">/&gt;</span>
+        <span class="nt">&lt;button</span> <span class="na">id=</span><span class="s">&quot;send&quot;</span><span class="nt">&gt;</span>Send<span class="nt">&lt;/button&gt;</span>
+      <span class="nt">&lt;/td&gt;</span>
+    <span class="nt">&lt;/tr&gt;</span>
+  <span class="nt">&lt;/table&gt;</span>
+<span class="nt">&lt;/form&gt;</span>
+
+<span class="nt">&lt;hr</span> <span class="nt">/&gt;</span>
+
+<span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">&quot;conversation&quot;</span><span class="nt">&gt;&lt;/div&gt;</span>
+</pre></div>
+
+
+<p>It doesn't get much simpler than that.</p>
+<p>We'll use <a href="http://jquery.com/">jquery</a> to attach JavaScript functions to various actions
+using constructs such as the following, which attaches the
+<code>send_message</code> to the <code>click</code> event on an element with id <code>send</code>:</p>
+<div class="highlight"><pre><span class="err">$</span><span class="p">(</span><span class="s">&quot;#send&quot;</span><span class="p">).</span><span class="n">click</span><span class="p">(</span><span class="n">send_message</span><span class="p">);</span>
+</pre></div>
+
+
+<p>Attaching functions this way, rather than using <code>onclick=</code> attributes
+in our HTML, helps keep the HTML simple.</p>
+<h2>Making things go</h2>
+<p>For this simple application, our client is going to need to implement
+two basic operations:</p>
+<ul>
+<li>Sending messages from the user to the server, and</li>
+<li>Receiving messages from the server and displaying them to the user.</li>
+</ul>
+<p>Polling for new messages is implemented using a function that looks
+very much like the sample shown above.  The final code looks like
+this:</p>
+<div class="highlight"><pre><span class="kd">function</span> <span class="nx">poll</span><span class="p">()</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">poll_interval</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+
+        <span class="nx">$</span><span class="p">.</span><span class="nx">ajax</span><span class="p">({</span>
+                <span class="nx">url</span><span class="o">:</span> <span class="nx">poll_url</span><span class="p">,</span>
+                <span class="nx">type</span><span class="o">:</span> <span class="s1">&#39;GET&#39;</span><span class="p">,</span>
+                <span class="nx">dataType</span><span class="o">:</span> <span class="s1">&#39;json&#39;</span><span class="p">,</span>
+                <span class="nx">success</span><span class="o">:</span> <span class="kd">function</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="nx">display_message</span><span class="p">(</span><span class="nx">data</span><span class="p">);</span>
+                        <span class="nx">poll_interval</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+                <span class="p">},</span>
+                <span class="nx">error</span><span class="o">:</span> <span class="kd">function</span> <span class="p">()</span> <span class="p">{</span>
+                        <span class="nx">poll_interval</span><span class="o">=</span><span class="mi">1000</span><span class="p">;</span>
+                <span class="p">},</span>
+                <span class="nx">complete</span><span class="o">:</span> <span class="kd">function</span> <span class="p">()</span> <span class="p">{</span>
+                        <span class="nx">setTimeout</span><span class="p">(</span><span class="nx">poll</span><span class="p">,</span> <span class="nx">poll_interval</span><span class="p">);</span>
+                <span class="p">},</span>
+        <span class="p">});</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>Upon successfully receiving a message from the server this starts
+<code>poll()</code> again immediately, but in the event of an error this code
+waits one second (1000 ms) before initiating a new poll.</p>
+<p>The <code>display_message</code> function simply updates a <code>&lt;div&gt;</code> element using
+the data supplied by the server:</p>
+<div class="highlight"><pre><span class="nx">function</span> <span class="nx">display_message</span><span class="p">(</span><span class="kd">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="err">$</span><span class="p">(</span><span class="s2">&quot;#conversation&quot;</span><span class="p">)</span><span class="bp">.</span><span class="nb">append</span><span class="p">(</span><span class="s2">&quot;&lt;p&gt;&lt;span class=&#39;nick&#39;&gt;&quot;</span>
+                                 <span class="o">+</span> <span class="p">(</span><span class="kd">data</span><span class="err">[</span><span class="s1">&#39;nick&#39;</span><span class="cp">]</span> ? data<span class="cp">[</span><span class="s1">&#39;nick&#39;</span><span class="cp">]</span> : &quot;<span class="ni">&amp;lt;</span>unknown<span class="ni">&amp;gt;</span>&quot;)
+                                 + &quot;<span class="nt">&lt;/span&gt;</span>: &quot; + data<span class="cp">[</span><span class="s1">&#39;message&#39;</span><span class="cp">]</span> + &quot;<span class="nt">&lt;/p&gt;</span>&quot;);
+                                 $(&quot;#conversation&quot;).each(function () {
+                                         this.scrollTop = this.scrollHeight;
+                                 });
+}
+</pre></div>
+
+
+<p>Sending messages is even simpler; we just make a one-off AJAX request
+to send the message to the server:</p>
+<div class="highlight"><pre><span class="kd">function</span> <span class="nx">send_message</span><span class="p">()</span> <span class="p">{</span>
+        <span class="nx">$</span><span class="p">.</span><span class="nx">ajax</span><span class="p">({</span>
+                <span class="nx">url</span><span class="o">:</span> <span class="s1">&#39;/pub&#39;</span><span class="p">,</span>
+                <span class="nx">type</span><span class="o">:</span> <span class="s1">&#39;POST&#39;</span><span class="p">,</span>
+                <span class="nx">dataType</span><span class="o">:</span> <span class="s1">&#39;json&#39;</span><span class="p">,</span>
+                <span class="nx">data</span><span class="o">:</span> <span class="p">{</span>
+                        <span class="nx">nick</span><span class="o">:</span> <span class="nx">$</span><span class="p">(</span><span class="s2">&quot;#nick&quot;</span><span class="p">).</span><span class="nx">val</span><span class="p">(),</span>
+                        <span class="nx">message</span><span class="o">:</span> <span class="nx">$</span><span class="p">(</span><span class="s2">&quot;#message&quot;</span><span class="p">).</span><span class="nx">val</span><span class="p">(),</span>
+                <span class="p">},</span>
+                <span class="nx">complete</span><span class="o">:</span> <span class="kd">function</span> <span class="p">()</span> <span class="p">{</span>
+                        <span class="nx">$</span><span class="p">(</span><span class="s2">&quot;#message&quot;</span><span class="p">).</span><span class="nx">val</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">);</span>
+                <span class="p">},</span>
+        <span class="p">});</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>This reads the value of the <code>nick</code> and <code>message</code> fields in our HTML
+document and then posts the message to the server.</p>
+<p>The complete JavaScript code can be found online as <a href="https://github.com/larsks/pubsub_example/blob/master/static/pubsub.js">pubsub.js</a>.</p>
+<h2>Making Bottle asynchronous</h2>
+<p>I generally lean on <a href="http://bottlepy.org/docs/">Bottle</a> when writing simple Python web
+applications.  It's simple to work with, but Bottle's native server is
+single-threaded, which makes it ill suited to a long-poll scenario:
+when one request is active, all other connections will block until the
+first request has been serviced.  You can test this out yourself with
+the following <a href="https://github.com/larsks/pubsub_example/blob/master/example_blocking.py">simple webapp</a>:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">time</span>
+<span class="n">import</span> <span class="n">bottle</span>
+
+<span class="err">@</span><span class="n">bottle</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="sc">&#39;/&#39;</span><span class="p">)</span>
+<span class="n">def</span> <span class="k">default</span><span class="p">()</span><span class="o">:</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">[</span> <span class="err">&#39;</span><span class="n">one</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="n">two</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="n">three</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="n">four</span><span class="err">&#39;</span> <span class="p">]</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="n">in</span> <span class="n">data</span><span class="o">:</span>
+        <span class="n">yield</span> <span class="n">d</span>
+        <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+
+<span class="n">def</span> <span class="n">main</span><span class="p">()</span><span class="o">:</span>
+    <span class="n">bottle</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="mi">9090</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="err">&#39;</span><span class="n">__main__</span><span class="err">&#39;</span><span class="o">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+
+<p>Open two simultaneous connections to this application.  In two
+dfferent windows, run the following command at approximately the same
+time:</p>
+<div class="highlight"><pre><span class="n">curl</span> <span class="o">--</span><span class="n">trace</span><span class="o">-</span><span class="n">ascii</span> <span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">stderr</span> <span class="n">http</span><span class="o">:</span><span class="c1">//localhost:9090</span>
+</pre></div>
+
+
+<p>You'll see that one will block with no activity until the first
+completes.</p>
+<p>Fortunately, there are a number of solutions to this issue.  I opted
+to use Bottle's support for <a href="http://www.gevent.org/">gevent</a>, an asynchronous networking
+library that includes a WSGI server.  Using Bottle's <code>gevent</code> support
+is easy; the above code, using the <code>gevent</code> server, would look 
+<a href="https://github.com/larsks/pubsub_example/blob/master/example_nonblocking.py">like this</a>:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">time</span>
+
+<span class="n">from</span> <span class="n">gevent</span> <span class="n">import</span> <span class="n">monkey</span><span class="p">;</span> <span class="n">monkey</span><span class="p">.</span><span class="n">patch_all</span><span class="p">()</span>
+<span class="n">import</span> <span class="n">bottle</span>
+
+<span class="err">@</span><span class="n">bottle</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="sc">&#39;/&#39;</span><span class="p">)</span>
+<span class="n">def</span> <span class="k">default</span><span class="p">()</span><span class="o">:</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">[</span> <span class="err">&#39;</span><span class="n">one</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="n">two</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="n">three</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="n">four</span><span class="err">&#39;</span> <span class="p">]</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="n">in</span> <span class="n">data</span><span class="o">:</span>
+        <span class="n">yield</span> <span class="n">d</span>
+        <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+
+<span class="n">def</span> <span class="n">main</span><span class="p">()</span><span class="o">:</span>
+    <span class="n">bottle</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="mi">9090</span><span class="p">,</span> <span class="n">server</span><span class="o">=</span><span class="s">&quot;gevent&quot;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="err">&#39;</span><span class="n">__main__</span><span class="err">&#39;</span><span class="o">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+
+<p>The <a href="http://www.gevent.org/gevent.monkey.html">monkey.patch_all</a> routine in the above code is necessary to
+patch a number of core Python libraries to work correctly with gevent.</p>
+<p>If you re-run the <code>curl --trace-ascii ...</code> test from earlier, you'll
+see that this webapp will now service multiple requests
+simultaneously.</p>
+<h2>Writing the server: receiving messages</h2>
+<p>The server needs to perform two basic operations:</p>
+<ul>
+<li>Receive a message from one client, and</li>
+<li>Broadcast that message to all connected clients.</li>
+</ul>
+<p>Receiving a message is easy (we're just grabbing some data from a
+<code>POST</code> request), but how do we handle the broadcast aspect of things?
+In this application, I opted to use <a href="http://zeromq.org/">0MQ</a>, a communication library
+that has been described as "<a href="https://speakerdeck.com/methodmissing/zeromq-sockets-on-steroids">sockets on steroids</a>".  In this case,
+two features of 0MQ are particularly attractive:</p>
+<ul>
+<li>support for publish/subscribe communication patterns, and</li>
+<li>an easy to use <a href="http://api.zeromq.org/2-1:zmq-inproc">in-process message transport</a></li>
+</ul>
+<blockquote>
+<p>Note that while you would normally import the Python 0MQ module like
+this:</p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">zmq</span>
+</pre></div>
+
+
+<p>When working with <a href="http://www.gevent.org/">gevent</a> you must do this instead:</p>
+<div class="highlight"><pre><span class="n">from</span> <span class="n">zmq</span> <span class="n">import</span> <span class="n">green</span> <span class="n">as</span> <span class="n">zmq</span>
+</pre></div>
+
+
+<p>This imports the "green" version of 0MQ, which uses non-blocking
+operations compatible with <code>gevent</code>.</p>
+</blockquote>
+<p>We'll start by creating a global 0MQ <code>PUB</code> socket (called <code>pubsock</code>)
+that will be used as one end of our in-process message bus:</p>
+<div class="highlight"><pre><span class="n">ctx</span> <span class="o">=</span> <span class="n">zmq</span><span class="p">.</span><span class="n">Context</span><span class="p">()</span>
+<span class="n">pubsock</span> <span class="o">=</span> <span class="n">ctx</span><span class="p">.</span><span class="n">socket</span><span class="p">(</span><span class="n">zmq</span><span class="p">.</span><span class="n">PUB</span><span class="p">)</span>
+<span class="n">pubsock</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="err">&#39;</span><span class="n">inproc</span><span class="o">:</span><span class="c1">//pub&#39;)</span>
+</pre></div>
+
+
+<p>With this in place, the code for receiving messages is trivial:</p>
+<div class="highlight"><pre><span class="err">@</span><span class="n">app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="err">&#39;</span><span class="o">/</span><span class="n">pub</span><span class="err">&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="err">&#39;</span><span class="n">POST</span><span class="err">&#39;</span><span class="p">)</span>
+<span class="n">def</span> <span class="n">pub</span><span class="p">()</span><span class="o">:</span>
+    <span class="n">global</span> <span class="n">pubsock</span>
+
+    <span class="n">pubsock</span><span class="p">.</span><span class="n">send_json</span><span class="p">({</span>
+        <span class="err">&#39;</span><span class="n">message</span><span class="err">&#39;</span><span class="o">:</span> <span class="n">bottle</span><span class="p">.</span><span class="n">request</span><span class="p">.</span><span class="n">params</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="err">&#39;</span><span class="n">message</span><span class="err">&#39;</span><span class="p">),</span>
+        <span class="err">&#39;</span><span class="n">nick</span><span class="err">&#39;</span><span class="o">:</span> <span class="n">bottle</span><span class="p">.</span><span class="n">request</span><span class="p">.</span><span class="n">params</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="err">&#39;</span><span class="n">nick</span><span class="err">&#39;</span><span class="p">),</span>
+        <span class="p">})</span>
+    <span class="k">return</span> <span class="p">{</span><span class="err">&#39;</span><span class="n">status</span><span class="err">&#39;</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">sent</span><span class="err">&#39;</span><span class="p">}</span>
+</pre></div>
+
+
+<p>We grab the <code>message</code> and <code>nick</code> parameters from a <code>POST</code> request and
+publish a JSON message onto the message bus.</p>
+<h2>Writing the server: sending messages</h2>
+<p>Having received a message from a client, our task is to send that
+message out to all connected clients.  Each client connected to our
+server will be polling the <code>/sub</code> endpoint for messages.  A simple
+implementation of <code>/sub</code> might look like this:</p>
+<div class="highlight"><pre><span class="err">@</span><span class="n">app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="err">&#39;</span><span class="o">/</span><span class="n">sub</span><span class="err">&#39;</span><span class="p">)</span>
+<span class="n">def</span> <span class="n">sub</span><span class="p">()</span><span class="o">:</span>
+    <span class="n">subsock</span> <span class="o">=</span> <span class="n">ctx</span><span class="p">.</span><span class="n">socket</span><span class="p">(</span><span class="n">zmq</span><span class="p">.</span><span class="n">SUB</span><span class="p">)</span>
+    <span class="n">subsock</span><span class="p">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">zmq</span><span class="p">.</span><span class="n">SUBSCRIBE</span><span class="p">,</span> <span class="err">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">subsock</span><span class="p">.</span><span class="n">connect</span><span class="p">(</span><span class="err">&#39;</span><span class="n">inproc</span><span class="o">:</span><span class="c1">//pub&#39;)</span>
+    <span class="n">msg</span> <span class="o">=</span> <span class="n">subsock</span><span class="p">.</span><span class="n">recv_json</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">msg</span>
+</pre></div>
+
+
+<p>This sets up a 0MQ <code>SUB</code> socket and connects it to the message bus
+that we established when we created <code>pubsocket</code>, earlier.  Because
+we're using 0MQ's publish-and-subscribe support, any message sent on
+<code>pubsocket</code> will automatically be propagated to any connected
+subscribers.</p>
+<p>When each client requests <code>/sub</code>, Bottle runs this function, which blocks
+waiting for messages on the message bus.  When a message arrives, the
+function returns it to the client and exits.  Note there's a little
+bit of magic here: when a request handler returns a dictionary to
+Bottle, Bottle automatically serializes that as JSON before sending
+the response to the client.</p>
+<h2>Fixing things up</h2>
+<p>While the above code seems to work, there is a potential problem with
+the implementation: If a client that has been waiting on <code>/sub</code>
+disconnects, the <code>sub</code> function will continue to remain blocked on the
+call to <code>subsock.recv_json</code>.  This means that the server will hold
+open the file descriptor associated with the connection.  Once a
+message is received, the server will attempt to send a response,
+notice that the client has disconnected, and close the file
+descriptor.  Given a large enough population of clients, the number of
+open file descriptors could run into system resource limits.  In order
+to prevent this situation, we need to react to client
+disconnects...which means that now, instead of just blocking waiting
+for messages, we <em>also</em> need to wait for some notification that a
+client has disconnected.</p>
+<p>In a traditional socket program, you might do this with something like
+the <code>poll()</code> or <code>select()</code>  function.  Since we're using 0MQ...we'll
+do exactly the same thing, which is one of the reasons 0MQ is fun to
+work with.  We first need to figure out how to detect client
+disconnects. The <a href="http://www.python.org/dev/peps/pep-0333/">WSGI specification</a> doesn't provide a standard way
+to expose the client socket to our application.  However, inspection
+of the WSGI environment (in <code>bottle.request.environ</code> reveals that the
+<code>wsgi.input</code> member contains an <code>rfile</code> attribute, which is exactly
+what we need.  With that in hand, we set up a polling object to listen
+for activity on either the message bus or on the client socket:</p>
+<div class="highlight"><pre><span class="n">rfile</span> <span class="o">=</span> <span class="n">bottle</span><span class="p">.</span><span class="n">request</span><span class="p">.</span><span class="n">environ</span><span class="p">[</span><span class="err">&#39;</span><span class="n">wsgi</span><span class="p">.</span><span class="n">input</span><span class="err">&#39;</span><span class="p">].</span><span class="n">rfile</span>
+
+<span class="n">poll</span> <span class="o">=</span> <span class="n">zmq</span><span class="p">.</span><span class="n">Poller</span><span class="p">()</span>
+<span class="n">poll</span><span class="p">.</span><span class="k">register</span><span class="p">(</span><span class="n">subsock</span><span class="p">,</span> <span class="n">zmq</span><span class="p">.</span><span class="n">POLLIN</span><span class="p">)</span>
+<span class="n">poll</span><span class="p">.</span><span class="k">register</span><span class="p">(</span><span class="n">rfile</span><span class="p">,</span> <span class="n">zmq</span><span class="p">.</span><span class="n">POLLIN</span><span class="p">)</span>
+</pre></div>
+
+
+<p>And now we can block waiting for either event:</p>
+<div class="highlight"><pre><span class="n">events</span> <span class="o">=</span> <span class="n">dict</span><span class="p">(</span><span class="n">poll</span><span class="p">.</span><span class="n">poll</span><span class="p">())</span>
+
+<span class="cp"># This means the client has disconnected.</span>
+<span class="k">if</span> <span class="n">rfile</span><span class="p">.</span><span class="n">fileno</span><span class="p">()</span> <span class="n">in</span> <span class="n">events</span><span class="o">:</span>
+    <span class="k">return</span>
+
+<span class="cp"># If we get this far it&#39;s because there&#39;s a message</span>
+<span class="cp"># available.</span>
+<span class="n">msg</span> <span class="o">=</span> <span class="n">subsock</span><span class="p">.</span><span class="n">recv_json</span><span class="p">()</span>
+<span class="k">return</span> <span class="n">msg</span>
+</pre></div>
+
+
+<h2>Finishing up</h2>
+<p>Those are pretty much all the parts necessary to implement a simple
+publish/subscribe web application in Python.  You can see all the
+parts put together into a functioning project in the
+<a href="http://github.com/larsks/pusub_example/">pubsub_example</a> repository, and you can try out the running code at
+<a href="http://pubsub.example.oddbit.com">http://pubsub.example.oddbit.com</a>.  The code in the repository is
+slightly more complete than the snippets presented in this article.</p>
+<p>If you encounter any problems with the code (or this article), or if
+I've gotten something terribly wrong, please open a new issue
+<a href="https://github.com/larsks/pubsub_example/issues">here</a>.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-next"><a href="http://localhost:8000/tag/javascript/index2.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

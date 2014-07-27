@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/vcs/rss/index.html" rel="self"></atom:link><lastBuildDate>Tue, 11 May 2010 00:00:00 -0400</lastBuildDate><item><title>Pushing a Git repository to Subversion</title><link>http://localhost:8000/posts/2010/05/11/pushing-a-git-repository-to-subversion/</link><description>&lt;p&gt;I recently set up a git repository server (using &lt;a href="http://scie.nti.st/2007/11/14/hosting-git-repositories-the-easy-and-secure-way"&gt;gitosis&lt;/a&gt; and &lt;a href="https://git.wiki.kernel.org/index.php/Gitweb"&gt;gitweb&lt;/a&gt;). Among the required features of the system was the ability to publish the git repository to a read-only Subversion repository. This sounds simple in principle but in practice proved to be a bit tricky.&lt;/p&gt;
+&lt;p&gt;Git makes an excellent Subversion client. You can use the git svn ... series of commands to pull a remote Subversion repository into a local git working tree and then have all the local advantages of git forcing the central code repository to change version control software. An important aspect of this model is that:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The Subversion repository is the primary source of the code, and&lt;/li&gt;
+&lt;li&gt;You populate your local git repository by pulling from the remote Subversion repository.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;It is possible to push a git change history into an empty Subversion repository. Most instructions for importing a git repository look something like this, and involve replaying your git change history on top of the Subversion change history:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;svn mkdir $REPO/{trunk, tags, branches}&lt;/li&gt;
+&lt;li&gt;git svn init -s $REPO&lt;/li&gt;
+&lt;li&gt;git svn fetch&lt;/li&gt;
+&lt;li&gt;git rebase trunk&lt;/li&gt;
+&lt;li&gt;git svn dcommit&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This works, and is fine as long as there are no other clones of your git repository out there. The mechanism outlined here has a fatal flaw: it modifies the change history of the &lt;em&gt;master&lt;/em&gt; branch. If you were working in a clone of a remote git repository and you were to run git status after the above steps, you would see something like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# On branch master&lt;/span&gt;
+&lt;span class="c"&gt;# Your branch and &amp;#39;origin/master&amp;#39; have diverged,&lt;/span&gt;
+&lt;span class="c"&gt;# and have 3 and 2 different commit(s) each, respectively.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you were then to try to push this to the remote repository, you would get an error:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;push&lt;/span&gt;
+&lt;span class="n"&gt;To&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;myrepo&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+ &lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;rejected&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;        &lt;span class="n"&gt;master&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;master&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;non&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fast&lt;/span&gt; &lt;span class="n"&gt;forward&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="nl"&gt;error:&lt;/span&gt; &lt;span class="n"&gt;failed&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;push&lt;/span&gt; &lt;span class="n"&gt;some&lt;/span&gt; &lt;span class="n"&gt;refs&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;myrepo&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In cases where the git change history is shared with other git repositories, we need a solution that does not modify the &lt;em&gt;master&lt;/em&gt; branch. We can get this my modifying the procedure slightly.&lt;/p&gt;
+&lt;p&gt;The initial sequence is still the same:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;svn mkdir $REPO/{trunk, tags, branches}&lt;/li&gt;
+&lt;li&gt;git svn init -s $REPO&lt;/li&gt;
+&lt;li&gt;git svn fetch&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;But instead of rebasing onto the &lt;em&gt;master&lt;/em&gt; branch, we create a local branch for managing the synchronization:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;git checkout -b svnsync&lt;/li&gt;
+&lt;li&gt;git rebase trunk&lt;/li&gt;
+&lt;li&gt;git svn dcommit&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;At this point we have changed the history of the &lt;em&gt;svnsync&lt;/em&gt; branch and we have left the &lt;em&gt;master&lt;/em&gt; branch untouched. Subsequent updates look like this:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;git checkout master&lt;/li&gt;
+&lt;li&gt;git pull&lt;/li&gt;
+&lt;li&gt;git checkout svnsync&lt;/li&gt;
+&lt;li&gt;git rebase master&lt;/li&gt;
+&lt;li&gt;git rebase trunk&lt;/li&gt;
+&lt;li&gt;git svn dcommit&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This gives us what we want: we can publish our git repository to a Subversion repository while maintaining the shared change history among our existing git clones.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 11 May 2010 00:00:00 -0400</pubDate><guid>tag:localhost:8000,2010-05-11:posts/2010/05/11/pushing-a-git-repository-to-subversion/</guid><category>git</category><category>subversion</category><category>vcs</category></item></channel></rss>

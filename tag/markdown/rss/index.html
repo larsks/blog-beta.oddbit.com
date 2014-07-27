@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/markdown/rss/index.html" rel="self"></atom:link><lastBuildDate>Tue, 06 Nov 2012 00:00:00 -0500</lastBuildDate><item><title>Converting HTML to Markdown</title><link>http://localhost:8000/posts/2012/11/06/converting-html-to-markdown/</link><description>&lt;p&gt;In order to import posts from &lt;a href="http://blogger.com/"&gt;Blogger&lt;/a&gt; into &lt;a href="http://scriptogr.am/"&gt;Scriptogr.am&lt;/a&gt; I needed to convert all the HTML formatting into Markdown.  Thankfully there are a number of tools out there that can help with this task.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href="http://markdownrules.com/"&gt;MarkdownRules&lt;/a&gt;. This is an online service build around
+  &lt;a href="http://milianw.de/projects/markdownify/"&gt;Markdownify&lt;/a&gt;.  It's a slick site with a nice API, but the backend
+  wasn't able to correctly render &lt;code&gt;&amp;lt;pre&amp;gt;&lt;/code&gt; blocks.  Since I'm often
+  writing about code, my posts are filled with things like embedded
+  XML and &lt;code&gt;#include &amp;lt;stdio.h&amp;gt;&lt;/code&gt;, so this was a problem.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href="http://johnmacfarlane.net/pandoc/"&gt;Pandoc&lt;/a&gt;.  This is a general purpose tool that can convert between
+  a variety of markup formats.  Unfortunately, it &lt;em&gt;also&lt;/em&gt; had similar
+  problems with &lt;code&gt;&amp;lt;pre&amp;gt;&lt;/code&gt; blocks.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href="https://github.com/aaronsw/html2text"&gt;html2text&lt;/a&gt;.  This a Python tool that converts HTML to Markdown.
+  It seems to do a better job at handling the &lt;code&gt;&amp;lt;pre&amp;gt;&lt;/code&gt; blocks, although
+  it doesn't always get the indent level correct when the &lt;code&gt;&amp;lt;pre&amp;gt;&lt;/code&gt;
+  blocks are embedded in lists.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;I ultimately ended up using &lt;a href="https://github.com/aaronsw/html2text"&gt;html2text&lt;/a&gt;, combined with a &lt;a href="https://gist.github.com/4022537"&gt;simple
+script&lt;/a&gt; to read the &lt;a href="http://www.dataliberation.org/takeout-products/blogger"&gt;export from Blogger&lt;/a&gt; and feed each document to
+the converter.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 06 Nov 2012 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2012-11-06:posts/2012/11/06/converting-html-to-markdown/</guid><category>markdown</category><category>meta</category></item></channel></rss>

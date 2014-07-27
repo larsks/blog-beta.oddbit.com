@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/archlinux/rss/index.html" rel="self"></atom:link><lastBuildDate>Mon, 08 Apr 2013 00:00:00 -0400</lastBuildDate><item><title>Did Arch Linux eat your KVM?</title><link>http://localhost:8000/posts/2013/04/08/did-arch-linux-eat-your-kvm/</link><description>&lt;p&gt;A recent update to &lt;a href="https://www.archlinux.org/"&gt;Arch Linux&lt;/a&gt; replaced the &lt;code&gt;qemu-kvm&lt;/code&gt; package with
+an updated version of &lt;code&gt;qemu&lt;/code&gt;.  A side effect of this change is that
+the &lt;code&gt;qemu-kvm&lt;/code&gt; binary is no longer available, and any &lt;code&gt;libvirt&lt;/code&gt; guests
+on your system utilizing that binary will no longer operate.  As is
+typical with Arch, there is no announcement about this incompatible
+change, and queries to &lt;code&gt;#archlinux&lt;/code&gt; will be met with the knowledge,
+grace and decorum you would expect of that channel:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;04&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;08&lt;/span&gt;&lt;span class="n"&gt;T18&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="n"&gt;gtmanfred&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;USE&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;enable&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;kvm&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;fucks&lt;/span&gt; &lt;span class="n"&gt;sake&lt;/span&gt;
+&lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;04&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;08&lt;/span&gt;&lt;span class="n"&gt;T18&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="n"&gt;gtmanfred&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;DO&lt;/span&gt; &lt;span class="n"&gt;I&lt;/span&gt; &lt;span class="n"&gt;HAVE&lt;/span&gt; &lt;span class="n"&gt;TO&lt;/span&gt; &lt;span class="n"&gt;SAY&lt;/span&gt; &lt;span class="n"&gt;IT&lt;/span&gt; &lt;span class="n"&gt;AGAIN&lt;/span&gt;&lt;span class="o"&gt;?&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The emulator binary is hardcoded into your domain in the &lt;code&gt;&amp;lt;emulator&amp;gt;&lt;/code&gt;
+emulator, and typically looks something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nt"&gt;&amp;lt;emulator&amp;gt;&lt;/span&gt;/usr/bin/qemu-kvm&lt;span class="nt"&gt;&amp;lt;/emulator&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In order to get your guests working again after the upgrade you'll
+need to replace this path with an appropriate selection from one of
+the other binaries provided by the &lt;code&gt;qemu&lt;/code&gt; package, which include
+&lt;code&gt;qemu-system-i386&lt;/code&gt; and &lt;code&gt;qemu-system-x86_64&lt;/code&gt;.  You'll want to select
+the one appropriate for your &lt;em&gt;guest&lt;/em&gt; architecture.  You can do this
+manually running &lt;code&gt;virsh edit&lt;/code&gt; for each affected guest, but if you have
+more than a couple that rapidly becomes annoying.&lt;/p&gt;
+&lt;p&gt;We can use &lt;a href="https://en.wikipedia.org/wiki/XSLT"&gt;XSLT&lt;/a&gt; to write a transformation that will set the
+&lt;code&gt;&amp;lt;emulator&amp;gt;&lt;/code&gt; to an appropriate value, and we can set things up to run
+this automatically across all of our guests.  The following stylesheet
+will replace the &lt;code&gt;&amp;lt;emulator&amp;gt;&lt;/code&gt; tag with a path to an appropriate &lt;code&gt;qemu&lt;/code&gt; (by 
+extracting the &lt;code&gt;arch&lt;/code&gt; attribute of the &lt;code&gt;domain/os/type&lt;/code&gt; element:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot;?&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;xsl:stylesheet&lt;/span&gt; &lt;span class="na"&gt;version=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;1.0&amp;quot;&lt;/span&gt; &lt;span class="na"&gt;xmlns:xsl=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;http://www.w3.org/1999/XSL/Transform&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;&amp;gt;&lt;/span&gt;
+
+  &lt;span class="c"&gt;&amp;lt;!-- copy all elements verbatim... --&amp;gt;&lt;/span&gt;
+  &lt;span class="nt"&gt;&amp;lt;xsl:template&lt;/span&gt; &lt;span class="na"&gt;match=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;@*|node()&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;xsl:copy&amp;gt;&lt;/span&gt;
+      &lt;span class="nt"&gt;&amp;lt;xsl:apply-templates&lt;/span&gt; &lt;span class="na"&gt;select=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;@*|node()&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;/&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;/xsl:copy&amp;gt;&lt;/span&gt;
+  &lt;span class="nt"&gt;&amp;lt;/xsl:template&amp;gt;&lt;/span&gt;
+
+  &lt;span class="c"&gt;&amp;lt;!-- ...except for the &amp;#39;emulator&amp;#39; element. --&amp;gt;&lt;/span&gt;
+  &lt;span class="nt"&gt;&amp;lt;xsl:template&lt;/span&gt; &lt;span class="na"&gt;match=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;emulator&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;emulator&amp;gt;&lt;/span&gt;/usr/bin/qemu-system-&lt;span class="nt"&gt;&amp;lt;xsl:value-of&lt;/span&gt; &lt;span class="na"&gt;select=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/*/os/type/@arch&amp;quot;&lt;/span&gt;&lt;span class="nt"&gt;/&amp;gt;&amp;lt;/emulator&amp;gt;&lt;/span&gt;
+  &lt;span class="nt"&gt;&amp;lt;/xsl:template&amp;gt;&lt;/span&gt;
+
+&lt;span class="nt"&gt;&amp;lt;/xsl:stylesheet&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We're going to apply this to all of our (inactive) guests via the
+&lt;code&gt;virsh edit&lt;/code&gt; subcommand.  This command runs an editor (selected based
+on your &lt;code&gt;VISUAL&lt;/code&gt; or &lt;code&gt;EDITOR&lt;/code&gt; environment variables) on your domain
+XML.  We need to create an "editor" that will apply the above
+transformation to its input file.  Something like this will work:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3
+4
+5&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="nv"&gt;tmpfile&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;mktemp &lt;span class="s2"&gt;&amp;quot;$1.patched.XXXXXX&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;)&lt;/span&gt;
+xsltproc -o &lt;span class="s2"&gt;&amp;quot;$tmpfile&amp;quot;&lt;/span&gt; patch-emulator.xsl &lt;span class="s2"&gt;&amp;quot;$1&amp;quot;&lt;/span&gt;
+mv &lt;span class="s2"&gt;&amp;quot;$tmpfile&amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$1&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;Assuming the above script has been saved as "patch-emulator.sh" (and
+made executable), we can run this across all of our inactive guests
+like this:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3
+4
+5
+6
+7
+8
+9&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="nv"&gt;VISUAL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;./patch-emulator.sh
+&lt;span class="nb"&gt;export &lt;/span&gt;VISUAL
+
+virsh list --inactive --name | &lt;span class="k"&gt;while &lt;/span&gt;&lt;span class="nb"&gt;read &lt;/span&gt;vm; &lt;span class="k"&gt;do&lt;/span&gt;
+        &lt;span class="o"&gt;[&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$vm&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]&lt;/span&gt; &lt;span class="o"&gt;||&lt;/span&gt; &lt;span class="k"&gt;continue&lt;/span&gt;
+&lt;span class="k"&gt;        &lt;/span&gt;virsh edit &lt;span class="nv"&gt;$vm&lt;/span&gt;
+&lt;span class="k"&gt;done&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Mon, 08 Apr 2013 00:00:00 -0400</pubDate><guid>tag:localhost:8000,2013-04-08:posts/2013/04/08/did-arch-linux-eat-your-kvm/</guid><category>archlinux</category><category>virtualization</category><category>kvm</category></item></channel></rss>

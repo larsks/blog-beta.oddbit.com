@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Posts tagged proxy</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+<div class="page-title">
+	<h2>Posts tagged with <span>proxy</span> &hellip;</h2>
+</div>
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2010/02/24/ldap-redundancy-through-proxy-servers/">Wed 24 February 2010</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://localhost:8000/tag/balance/index.html" rel="tag">balance</a>,  <a href="http://localhost:8000/tag/ha/index.html" rel="tag">ha</a>,  <a href="http://localhost:8000/tag/howto/index.html" rel="tag">howto</a>,  <a href="http://localhost:8000/tag/ldap/index.html" rel="tag">ldap</a>,  <a href="http://localhost:8000/tag/proxy/index.html" rel="tag">proxy</a>,  <a href="http://localhost:8000/tag/ssl/index.html" rel="tag">ssl</a>,  <a href="http://localhost:8000/tag/stunnel/index.html" rel="tag">stunnel</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2010/02/24/ldap-redundancy-through-proxy-servers/" title="Permalink to LDAP redundancy through proxy servers" rel="bookmark">LDAP redundancy through proxy servers</a>
+		</h2>
+		<div class="entry-content">
+			<h1>Problem 1: Failover</h1>
+<h2>The problem</h2>
+<p>Many applications only allow you to configure a single LDAP server. This can lead to unnecessary service outages if your directory service infrastructure is highly available (e.g., you are running Active Directory) and your application cannot take advantage of this fact.</p>
+<h2>A solution</h2>
+<p>We can provide a level of redundancy by passing the LDAP connections through a load balancing proxy. While this makes the proxy a single point of failure, it is (a) a very simple tool and thus less prone to complex failure modes, (b) running on the same host as the web application, and (c) is completely under our control.</p>
+<p>For this example, I will use <a href="http://www.inlab.de/balance.html">Balance</a>, a simple TCP load balancer from <a href="http://www.inlab.de/">Inlab Software GmbH</a>. There are packages available for most major Linux distributions, including <a href="http://fedoraproject.org/">Fedora</a> and <a href="http://www.centos.org/">CentOS</a>.</p>
+<p>Balance is configured completely on the command line. To provide round-robin access to a suite of three directory servers running LDAP over SSL, you might use the following command line:</p>
+<div class="highlight"><pre><span class="n">balance</span> <span class="o">-</span><span class="n">b</span> <span class="mf">127.0.0.1</span> <span class="mi">636</span> <span class="mf">10.1.1.1</span> <span class="mf">10.1.1.2</span>
+</pre></div>
+
+
+<p>Using balance's terminology, this creates one <em>group</em> of two <em>channels</em>. Balance will round-robin among the channels in this group. Note that here and in subsequent examples we are binding the proxy to the loopback interface so that it is only available to applications running on the same host.</p>
+<p>If you would prefer to preferentially send all the requests to the first server, and only use the second server if the first is unavailable, you could use a configuration like this:</p>
+<div class="highlight"><pre><span class="n">balance</span> <span class="o">-</span><span class="n">b</span> <span class="mf">127.0.0.1</span> <span class="mi">636</span> <span class="mf">10.1.1.1</span> <span class="err">\</span><span class="o">!</span> <span class="mf">10.1.1.2</span>
+</pre></div>
+
+
+<p>While you can run balance from a standard init (/etc/rc.d/...) script, I prefer to use a service manager such as <a href="http://smarden.org/runit/">runit</a> which takes care of restarting the service if it should exit unexpectedly. You could achieve the same thing in a slightly less flexible fashion by putting your balance command line in /etc/inittab. In either case you need to add the -f option to the command line, which causes balance to stay in the foreground.</p>
+<h1>Problem 2: Debugging LDAP over SSL</h1>
+<h2>The problem</h2>
+<p>It is convenient to use a packet tracer such as <a href="http://www.wireshark.org/">Wireshark</a> to debug LDAP protocol errors. This is often more informative than the debugging information that will be available to you on the client side, and may be more useful than server side debugging in many cases, even supposing that you have administrative access to the directory servers.</p>
+<h2>A solution</h2>
+<p>You can use <a href="http://www.stunnel.org/">Stunnel</a>, a general purpose SSL proxy tool, to intercept unencrypted client connections on the local machine and then forward them over an SSL channel to a remote server. This makes the unencrypted LDAP traffic available on the loopback interface while still ensuring that it is encrypted on the wire.</p>
+<p>Stunnel can operate both as an SSL server and as an SSL client. In this case, we will be running it in client mode, connecting to a remote SSL server (or to the proxy configured in our previous example). Stunnel is configured by means of a simple INI-style configuration file. To achieve the goals of this example we might put the following configuration in a file (say, stunnel.conf):</p>
+<div class="highlight"><pre><span class="k">[ldap]</span>
+
+<span class="na">accept</span> <span class="o">=</span> <span class="s">127.0.0.1:389</span>
+<span class="na">client</span> <span class="o">=</span> <span class="s">yes</span>
+<span class="na">connect</span> <span class="o">=</span> <span class="s">localhost:636</span>
+</pre></div>
+
+
+<p>We would run stunnel like this:</p>
+<div class="highlight"><pre><span class="n">stunnel</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">conf</span>
+</pre></div>
+
+
+<p>Again, I would run this under the control of a service supervisor. To keep stunnel in the foreground we would add the following to the global section of the configuration file (i.e., before the <code>[ldap]</code> section marker):</p>
+<div class="highlight"><pre><span class="n">foreground</span> <span class="o">=</span> <span class="n">yes</span>
+</pre></div>
+
+
+<p>With both of these solutions in place, we have achieved the following:</p>
+<ul>
+<li>High availability.</li>
+</ul>
+<p>Our application will transparently make use of multiple directory servers. If a server fails, our application will continue to operate.</p>
+<ul>
+<li>Security</li>
+</ul>
+<p>Our traffic is encrypted on the wire, regardless of whether the application has support for LDAP over SSL.</p>
+<ul>
+<li>Visibility</li>
+</ul>
+<p>We are free to examine unencrypted traffic with a packet sniffer running on the local host.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-next"><a href="http://localhost:8000/tag/proxy/index2.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

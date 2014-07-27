@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://localhost:8000/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://localhost:8000/" /> 
+		<!--[if lte IE 8]><script src="http://localhost:8000/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://localhost:8000">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://localhost:8000/posts/2012/02/13/enphase-envoy-xml-data-format/">Mon 13 February 2012</a></div>
+		<span class="byline">By <a href="http://localhost:8000/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://localhost:8000/posts/2012/02/13/enphase-envoy-xml-data-format/" title="Permalink to Enphase Envoy XML Data Format" rel="bookmark">Enphase Envoy XML Data Format</a>
+		</h2>
+		<div class="entry-content">
+			<p>We recently installed a (photovoltaic) solar array on our house.  The system uses <a href="http://enphase.com/">Enphase</a> microinverters, and includes a monitoring device called the "<a href="http://enphase.com/products/envoy/">Envoy</a>".  The Envoy collects data from the microinverters and sends it back to Enphase.  Enphase performs monitoring services for the array and also provides access to the data collected by the Envoy product.  </p>
+<p>I'm interested in getting direct access to the data provided by the Envoy.  In pursuit of that goal, I set up a man-in-the-middle proxy server on my home network to intercept the communication from the Envoy to the Enphase servers.  I'm documenting the results of my exploration here in case somebody else finds the information useful.  </p>
+<p>The Envoy sends deflate-encoded XML data to the Enphase servers. You can decompress the data using Python's <code>zlib</code> module like this:  </p>
+<div class="highlight"><pre><span class="n">import</span> <span class="n">zlib</span>
+<span class="n">xml_data</span> <span class="o">=</span> <span class="n">zlib</span><span class="p">.</span><span class="n">decompress</span><span class="p">(</span><span class="n">deflate_compressed_data</span><span class="p">)</span>
+</pre></div>
+
+
+<p>The request is an http <code>POST</code> to <a href="https://reports.enphaseenergy.com/emu_reports/performance_report?webcomm_version=3.0">https://reports.enphaseenergy.com/emu_reports/performance_report?webcomm_version=3.0</a>. The request headers look like this:  </p>
+<div class="highlight"><pre><span class="n">POST</span> <span class="o">/</span><span class="n">emu_reports</span><span class="o">/</span><span class="n">performance_report</span><span class="o">?</span><span class="n">webcomm_version</span><span class="o">=</span><span class="mf">3.0</span> <span class="n">HTTP</span><span class="o">/</span><span class="mf">1.1</span>
+<span class="nl">Accept:</span> <span class="err">*/</span><span class="o">*</span>
+<span class="nl">Connection:</span> <span class="n">close</span>
+<span class="n">Content</span><span class="o">-</span><span class="n">Type</span><span class="o">:</span> <span class="n">application</span><span class="o">/</span><span class="n">x</span><span class="o">-</span><span class="n">deflate</span>
+<span class="n">Content</span><span class="o">-</span><span class="n">Length</span><span class="o">:</span> <span class="mi">729</span>
+<span class="nl">Host:</span> <span class="n">reports</span><span class="p">.</span><span class="n">enphaseenergy</span><span class="p">.</span><span class="n">com</span><span class="o">:</span><span class="mi">443</span>
+</pre></div>
+
+
+<p>The request body -- after inflating it -- looks something like this:  </p>
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nt">xml</span> <span class="nt">version</span><span class="o">=</span><span class="s1">&#39;1.0&#39;</span> <span class="nt">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="o">?&gt;</span>
+<span class="o">&lt;</span><span class="nt">perf_report</span> <span class="nt">report_timestamp</span><span class="o">=</span><span class="s1">&#39;1329134202&#39;</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">envoy</span> <span class="nt">ip_addr</span><span class="o">=</span><span class="s1">&#39;192.168.1.166&#39;</span> <span class="nt">mac_addr</span><span class="o">=</span><span class="s1">&#39;00:11:22:33:44:55&#39;</span>
+  <span class="nt">timezone</span><span class="o">=</span><span class="s1">&#39;US/Eastern&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00024-r04&#39;</span>
+  <span class="nt">sw_version</span><span class="o">=</span><span class="s1">&#39;R3.0.0 (9720d7)&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456115374&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">correlation_id</span><span class="o">=</span><span class="s1">&#39;161&#39;</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;221&#39;</span>
+  <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;10009&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456102635&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456102635&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134118&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">correlation_id</span><span class="o">=</span><span class="s1">&#39;194&#39;</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;222&#39;</span>
+  <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;101&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103685.1&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456103685&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134119&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">correlation_id</span><span class="o">=</span><span class="s1">&#39;196&#39;</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;223&#39;</span>
+  <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;101&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105331.1&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456105331&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134120&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">correlation_id</span><span class="o">=</span><span class="s1">&#39;202&#39;</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;224&#39;</span>
+  <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;101&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103294.1&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456103294&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134130&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">correlation_id</span><span class="o">=</span><span class="s1">&#39;206&#39;</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;225&#39;</span>
+  <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;101&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105321.1&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456105321&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134139&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;2&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;226&#39;</span> <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;101&#39;</span>
+  <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104335.1&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456104335&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134152&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;227&#39;</span> <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;509&#39;</span>
+  <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104335&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456104335&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134152&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">event</span> <span class="nt">correlation_id</span><span class="o">=</span><span class="s1">&#39;213&#39;</span> <span class="nt">event_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">id</span><span class="o">=</span><span class="s1">&#39;228&#39;</span>
+  <span class="nt">event_code</span><span class="o">=</span><span class="s1">&#39;101&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105296.1&#39;</span> <span class="nt">serial_num</span><span class="o">=</span><span class="s1">&#39;123456105296&#39;</span>
+  <span class="nt">event_date</span><span class="o">=</span><span class="s1">&#39;1329134153&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105041&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105041.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104335&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104335.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104246&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104246.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104224&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104224.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456102776&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456102776.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103271&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103271.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105190&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105190.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2097152&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105321&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105321.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105178&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105178.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104988&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104988.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2097152&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103294&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103294.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105346&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105346.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105297&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105297.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104896&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456104896.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2097152&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105331&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105331.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103546&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103546.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2097152&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103685&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103685.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2359296&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103215&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;16&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456103215.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2097152&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456102635&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456102635.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+  <span class="o">&lt;</span><span class="nt">device</span> <span class="nt">image_bits</span><span class="o">=</span><span class="s1">&#39;131072&#39;</span> <span class="nt">device_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">admin_state</span><span class="o">=</span><span class="s1">&#39;1&#39;</span>
+  <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;2097152&#39;</span> <span class="nt">part_num</span><span class="o">=</span><span class="s1">&#39;800-00103-r05&#39;</span>
+  <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105296&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span><span class="o">&gt;</span>
+    <span class="o">&lt;</span><span class="nt">channel</span> <span class="nt">channel_type</span><span class="o">=</span><span class="s1">&#39;1&#39;</span> <span class="nt">condition_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span>
+    <span class="nt">observed_flags</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="nt">eqid</span><span class="o">=</span><span class="s1">&#39;123456105296.1&#39;</span> <span class="nt">control_bits</span><span class="o">=</span><span class="s1">&#39;0&#39;</span> <span class="o">/&gt;</span>
+  <span class="o">&lt;/</span><span class="nt">device</span><span class="o">&gt;</span>
+<span class="o">&lt;/</span><span class="nt">perf_report</span><span class="o">&gt;</span>
+</pre></div>
+
+
+<p>The response headers look like this:  </p>
+<div class="highlight"><pre><span class="n">HTTP</span><span class="o">/</span><span class="mf">1.1</span> <span class="mi">200</span> <span class="n">OK</span>
+<span class="nl">Date:</span> <span class="n">Mon</span><span class="p">,</span> <span class="mi">13</span> <span class="n">Feb</span> <span class="mi">2012</span> <span class="mi">11</span><span class="o">:</span><span class="mi">56</span><span class="o">:</span><span class="mi">48</span> <span class="n">GMT</span>
+<span class="nl">Server:</span> <span class="n">Apache</span>
+<span class="n">X</span><span class="o">-</span><span class="n">Powered</span><span class="o">-</span><span class="n">By</span><span class="o">:</span> <span class="n">Phusion</span> <span class="n">Passenger</span> <span class="p">(</span><span class="n">mod_rails</span><span class="o">/</span><span class="n">mod_rack</span><span class="p">)</span> <span class="mf">3.0.11</span>
+<span class="nl">ETag:</span> <span class="s">&quot;95bc2eaddfac613540f469946f28af4b&quot;</span>
+<span class="n">X</span><span class="o">-</span><span class="n">Runtime</span><span class="o">:</span> <span class="mi">297</span>
+<span class="n">Cache</span><span class="o">-</span><span class="n">Control</span><span class="o">:</span> <span class="n">private</span><span class="p">,</span> <span class="n">max</span><span class="o">-</span><span class="n">age</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">must</span><span class="o">-</span><span class="n">revalidate</span>
+<span class="n">Content</span><span class="o">-</span><span class="n">Length</span><span class="o">:</span> <span class="mi">142</span>
+<span class="nl">Status:</span> <span class="mi">200</span>
+<span class="n">Cache</span><span class="o">-</span><span class="n">Control</span><span class="o">:</span> <span class="n">max</span><span class="o">-</span><span class="n">age</span><span class="o">=</span><span class="mi">31536000</span>
+<span class="nl">Expires:</span> <span class="n">Tue</span><span class="p">,</span> <span class="mi">12</span> <span class="n">Feb</span> <span class="mi">2013</span> <span class="mi">11</span><span class="o">:</span><span class="mi">56</span><span class="o">:</span><span class="mi">48</span> <span class="n">GMT</span>
+<span class="nl">Connection:</span> <span class="n">close</span>
+<span class="n">Content</span><span class="o">-</span><span class="n">Type</span><span class="o">:</span> <span class="n">application</span><span class="o">/</span><span class="n">x</span><span class="o">-</span><span class="n">deflate</span><span class="p">;</span> <span class="n">charset</span><span class="o">=</span><span class="n">utf</span><span class="o">-</span><span class="mi">8</span>
+</pre></div>
+
+
+<p>And the response body -- after inflating it -- looks something like this:  </p>
+<div class="highlight"><pre><span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;</span>
+<span class="nt">&lt;perf_report_response</span> <span class="na">status=</span><span class="s">&quot;success&quot;</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;events_processed&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;221&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;222&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;223&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;224&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;225&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;226&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;227&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;event</span> <span class="na">id=</span><span class="s">&quot;228&quot;</span><span class="nt">/&gt;</span>
+  <span class="nt">&lt;/events_processed&gt;</span>
+<span class="nt">&lt;/perf_report_response&gt;</span>
+</pre></div>
+
+
+<p>My goal is to set up a simple proxy that in addition to passing the information along to Enphase will also collect it locally. I'll update the blog if I make progress on that front.  </p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post--><div class="navigation">
+		<div class="nav-previous">
+				<a href="http://localhost:8000/index65.html">
+			<span class="meta-nav">&larr;</span> Newer posts</a>
+		</div>		
+		<div class="nav-next"><a href="http://localhost:8000/index67.html" >Older posts <span class="meta-nav">&rarr;</span></a></div>
+</div>
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

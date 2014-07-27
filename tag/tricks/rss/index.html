@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://localhost:8000/</link><description>One of these things is not like the others</description><atom:link href="http://localhost:8000/tag/tricks/rss/index.html" rel="self"></atom:link><lastBuildDate>Thu, 16 Jan 2014 00:00:00 -0500</lastBuildDate><item><title>Stupid OpenStack Tricks</title><link>http://localhost:8000/posts/2014/01/16/stupid-openstack-tricks/</link><description>&lt;p&gt;I work with several different OpenStack installations.  I usually work
+on the command line, sourcing in an appropriate &lt;code&gt;stackrc&lt;/code&gt; with
+credentials as necessary, but occasionally I want to use the dashboard
+for something.&lt;/p&gt;
+&lt;p&gt;For all of the deployments with which I work, the keystone endpoint is
+on the same host as the dashboard.  So rather than trying to remember
+which dashboard url I want for the environment I'm currently using on
+the command line, I put together this shell script:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3
+4&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="nv"&gt;url&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;OS_AUTH_URL&lt;/span&gt;&lt;span class="p"&gt;%:*&lt;/span&gt;&lt;span class="k"&gt;}&lt;/span&gt;/
+&lt;span class="nb"&gt;exec &lt;/span&gt;xdg-open &lt;span class="nv"&gt;$url&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;This takes the value of your &lt;code&gt;OS_AUTH_URL&lt;/code&gt; environment variable,
+strips off everything after the port specification, and passes that to
+your default browser.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Thu, 16 Jan 2014 00:00:00 -0500</pubDate><guid>tag:localhost:8000,2014-01-16:posts/2014/01/16/stupid-openstack-tricks/</guid><category>openstack</category><category>tricks</category></item></channel></rss>
