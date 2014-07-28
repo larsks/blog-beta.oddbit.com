@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/systemd/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2012-11-05T00:00:00-05:00</updated><entry><title>Private /tmp directories in Fedora</title><link href="http://blog-beta.oddbit.com/2012/11/05/fedora-private-tmp/" rel="alternate"></link><updated>2012-11-05T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2012-11-05:2012/11/05/fedora-private-tmp/</id><summary type="html">&lt;p&gt;I ran into an odd problem the other day: I was testing out some
+configuration changes for a web application by dropping files into
+&lt;code&gt;/tmp&lt;/code&gt; and pointing the application configuration at the appropriate
+directory.  Everything worked out great when testing it by hand...but
+when starting up the &lt;code&gt;httpd&lt;/code&gt; service, the application behaved as if it
+was unable to find any of the files in &lt;code&gt;/tmp&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;My first assumption was that had simply missed something obvious like
+file permissions or that I had a typo in my configuration, but after
+repeated checks and lots of testing it was obvious that something else
+was going on.&lt;/p&gt;
+&lt;p&gt;Grasping at straws I took a close look at the &lt;code&gt;systemd&lt;/code&gt; service file
+for &lt;code&gt;httpd&lt;/code&gt;, which looks like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[Unit]&lt;/span&gt;
+&lt;span class="na"&gt;Description&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;The Apache HTTP Server (prefork MPM)&lt;/span&gt;
+&lt;span class="na"&gt;After&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;syslog.target network.target remote-fs.target nss-lookup.target&lt;/span&gt;
+
+&lt;span class="k"&gt;[Service]&lt;/span&gt;
+&lt;span class="na"&gt;Type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;forking&lt;/span&gt;
+&lt;span class="na"&gt;PIDFile&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/var/run/httpd/httpd.pid&lt;/span&gt;
+&lt;span class="na"&gt;EnvironmentFile&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/etc/sysconfig/httpd&lt;/span&gt;
+&lt;span class="na"&gt;ExecStart&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/usr/sbin/httpd $OPTIONS -k start&lt;/span&gt;
+&lt;span class="na"&gt;ExecReload&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/usr/sbin/httpd $OPTIONS -t&lt;/span&gt;
+&lt;span class="na"&gt;ExecReload&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/bin/kill -HUP $MAINPID&lt;/span&gt;
+&lt;span class="na"&gt;ExecStop&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;/usr/sbin/httpd $OPTIONS -k stop&lt;/span&gt;
+&lt;span class="na"&gt;PrivateTmp&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;true&lt;/span&gt;
+
+&lt;span class="k"&gt;[Install]&lt;/span&gt;
+&lt;span class="na"&gt;WantedBy&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;multi-user.target&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Browsing throught file the following line caught my eye:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;PrivateTmp&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you know about per-process namespaces in Linux, you're probably
+saying "Ah-ha!".  If you &lt;em&gt;don't&lt;/em&gt; know about per-process namespaces in
+Linux...you should, because this is the foundation for all sorts of
+things including Linux Containers (&lt;a href="http://lxc.sourceforge.net/"&gt;LXC&lt;/a&gt;).  Here's some good
+introductory reading:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="http://lxr.free-electrons.com/source/Documentation/unshare.txt"&gt;http://lxr.free-electrons.com/source/Documentation/unshare.txt&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://www.debian-administration.org/article/628/Per-Process_Namespaces"&gt;http://www.debian-administration.org/article/628/Per-Process_Namespaces&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://glandium.org/blog/?p=217"&gt;http://glandium.org/blog/?p=217&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;In short, with this configuration in place, the service gets it's very
+own version of &lt;code&gt;/tmp&lt;/code&gt; not shared with any other process.  While the
+files I placed in &lt;code&gt;/tmp&lt;/code&gt; were visible in &lt;em&gt;my&lt;/em&gt; process, they didn't
+exist from the point of view of Apache.&lt;/p&gt;
+&lt;p&gt;The fix in my case was to place the files somewhere other than &lt;code&gt;/tmp&lt;/code&gt;.
+One could also disable the &lt;code&gt;PrivateTmp&lt;/code&gt; setting, but it's generally
+turned on for reasons of security.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;PrivateTmp&lt;/code&gt; option is documented in &lt;a href="https://docs.fedoraproject.org/en-US/Fedora/17/html/Release_Notes/sect-Release_Notes-Changes_for_Sysadmin.html"&gt;Changes in Fedora for System
+Administrators&lt;/a&gt;, and Dan Walsh discusses it briefly on
+&lt;a href="http://danwalsh.livejournal.com/51459.html"&gt;his blog&lt;/a&gt;.&lt;/p&gt;</summary><category term="fedora"></category><category term="systemd"></category></entry></feed>

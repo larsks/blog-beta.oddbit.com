@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/bayes/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2012-11-08T00:00:00-05:00</updated><entry><title>Document classification with POPFile</title><link href="http://blog-beta.oddbit.com/2012/11/08/popfile-document-classification/" rel="alternate"></link><updated>2012-11-08T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2012-11-08:2012/11/08/popfile-document-classification/</id><summary type="html">&lt;p&gt;I recently embarked upon a quest to categorize a year's worth of
+trouble tickets (around 15000 documents total).  We wanted to see what
+sort of things are generating the most work for our helpdesk staff so
+that we can identify areas in which improvements would have the
+biggest impact.  One of my colleagues took a first pass at the data by
+manually categorizing the tickets based on their subject.  This
+resulted in some useful data, but in the end just over 40% of the
+tickets are still uncategorized.&lt;/p&gt;
+&lt;p&gt;I was convinced that we could do better than that by taking into
+account the actual content of the trouble tickets.  This seemed like a
+good task for a &lt;a href="https://en.wikipedia.org/wiki/Bayesian_spam_filtering"&gt;Bayesian filter&lt;/a&gt; -- a tool that uses the
+statistical probability of words to categorize documents, and is most
+commonly used to differentiate "spam" from "non-spam" messages in
+email.  Because of this common use case, many of the tools out there
+are built explicitly to make binary (spam/not-spam) determinations,
+while for my purposes I needed something that was capable for sorting
+documents into multiple categories.&lt;/p&gt;
+&lt;p&gt;I finally stumbled across &lt;a href="http://getpopfile.org/"&gt;POPFile&lt;/a&gt;, a tool that does almost exactly
+what I want.  Out of the box, POPFile is designed to act as a proxy
+between you and a POP mailbox, categorizing messages as your mail
+client retrieves them from a server.  While this is tremendously
+convenient for use categorizing email, it would be a sub-optimal
+interface for categorizing a collection of existing documents.&lt;/p&gt;
+&lt;p&gt;Fortunately, POPFile offers an &lt;a href="http://getpopfile.org/docs/popfilemodules:xmlrpc#popfile_xml-rpc_api"&gt;XML-RPC API&lt;/a&gt; that allows programmatic
+interaction with the classification engine.  Usage is relatively
+simple; first you acquire a connection to the XML-RPC API and
+establish a session key:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;popfile&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;ServerProxy&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;http://localhost:8081&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;api&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;popfile&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;POPFile&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;API&lt;/span&gt;
+&lt;span class="n"&gt;session&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;api&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get_session_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;admin&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And then for each document, perform whatever transformations you wish
+to make (I'm building a minimal mail header) and then pass it to the
+&lt;code&gt;handle_message()&lt;/code&gt; method:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;with&lt;/span&gt; &lt;span class="n"&gt;tempfile&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;NamedTemporaryFile&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="n"&gt;as&lt;/span&gt; &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Subject&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;subject&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Message&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ID&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;%&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;localhost&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sc"&gt;&amp;#39;\n&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sc"&gt;&amp;#39;\n&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;join&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;flush&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+    &lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="n"&gt;Pass&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;POPFile&lt;/span&gt; &lt;span class="n"&gt;service&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+    &lt;span class="n"&gt;bucket&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;api&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;handle_message&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;session&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;fd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;null&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The &lt;code&gt;handle_message()&lt;/code&gt; call takes three parameters:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The session key,&lt;/li&gt;
+&lt;li&gt;A path to the input file,&lt;/li&gt;
+&lt;li&gt;A path to the output file (POPFile returns the message with header
+  modifications)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;In this example, I'm passing &lt;code&gt;/dev/null&lt;/code&gt; as the third parameter
+because I don't care about the data returned from POPFile.&lt;/p&gt;
+&lt;p&gt;Initially, POPFile will not perform any categorization of documents.
+After manually categorizing just a few documents, two things happen:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;POPFile will start using any &lt;a href="http://getpopfile.org/docs/glossary:amagnet"&gt;magnets&lt;/a&gt; you have defined, which are
+  keyword rules that automatically assign documents to a given
+  category.&lt;/li&gt;
+&lt;li&gt;For documents that do not match any magnet rules, POPFile will
+  attempt to categorize them using the Bayesian inference engine.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;POPFile provides a web interface for interacting with the
+classification engine.  In particular, this is where you go to
+manually classify documents, which further enhances the accuracy of
+the Bayesian filters.  I got bored after manually categorizing on the
+order of 300 or 400 tickets and just fed the rest of the collection
+into the filter.  I suspect the accuracy of the system is somewhere
+between 70% and 80% (based on POPFiles's estimates of accuracy while I
+was manually categorizing documents).&lt;/p&gt;
+&lt;p&gt;For more information:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="http://getpopfile.org/"&gt;POPFile&lt;/a&gt; website&lt;/li&gt;
+&lt;/ul&gt;</summary><category term="bayes"></category><category term="analytics"></category></entry></feed>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/tricks/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2014-01-16T00:00:00-05:00</updated><entry><title>Stupid OpenStack Tricks</title><link href="http://blog-beta.oddbit.com/2014/01/16/stupid-openstack-tricks/" rel="alternate"></link><updated>2014-01-16T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-01-16:2014/01/16/stupid-openstack-tricks/</id><summary type="html">&lt;p&gt;I work with several different OpenStack installations.  I usually work
+on the command line, sourcing in an appropriate &lt;code&gt;stackrc&lt;/code&gt; with
+credentials as necessary, but occasionally I want to use the dashboard
+for something.&lt;/p&gt;
+&lt;p&gt;For all of the deployments with which I work, the keystone endpoint is
+on the same host as the dashboard.  So rather than trying to remember
+which dashboard url I want for the environment I'm currently using on
+the command line, I put together this shell script:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3
+4&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="nv"&gt;url&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;OS_AUTH_URL&lt;/span&gt;&lt;span class="p"&gt;%:*&lt;/span&gt;&lt;span class="k"&gt;}&lt;/span&gt;/
+&lt;span class="nb"&gt;exec &lt;/span&gt;xdg-open &lt;span class="nv"&gt;$url&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;This takes the value of your &lt;code&gt;OS_AUTH_URL&lt;/code&gt; environment variable,
+strips off everything after the port specification, and passes that to
+your default browser.&lt;/p&gt;</summary><category term="openstack"></category><category term="tricks"></category></entry></feed>

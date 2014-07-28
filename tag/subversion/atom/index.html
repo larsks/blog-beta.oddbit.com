@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/subversion/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2010-05-11T00:00:00-04:00</updated><entry><title>Pushing a Git repository to Subversion</title><link href="http://blog-beta.oddbit.com/2010/05/11/pushing-git-repository-to-subversion/" rel="alternate"></link><updated>2010-05-11T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-05-11:2010/05/11/pushing-git-repository-to-subversion/</id><summary type="html">&lt;p&gt;I recently set up a git repository server (using &lt;a href="http://scie.nti.st/2007/11/14/hosting-git-repositories-the-easy-and-secure-way"&gt;gitosis&lt;/a&gt; and &lt;a href="https://git.wiki.kernel.org/index.php/Gitweb"&gt;gitweb&lt;/a&gt;). Among the required features of the system was the ability to publish the git repository to a read-only Subversion repository. This sounds simple in principle but in practice proved to be a bit tricky.&lt;/p&gt;
+&lt;p&gt;Git makes an excellent Subversion client. You can use the git svn ... series of commands to pull a remote Subversion repository into a local git working tree and then have all the local advantages of git forcing the central code repository to change version control software. An important aspect of this model is that:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The Subversion repository is the primary source of the code, and&lt;/li&gt;
+&lt;li&gt;You populate your local git repository by pulling from the remote Subversion repository.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;It is possible to push a git change history into an empty Subversion repository. Most instructions for importing a git repository look something like this, and involve replaying your git change history on top of the Subversion change history:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;svn mkdir $REPO/{trunk, tags, branches}&lt;/li&gt;
+&lt;li&gt;git svn init -s $REPO&lt;/li&gt;
+&lt;li&gt;git svn fetch&lt;/li&gt;
+&lt;li&gt;git rebase trunk&lt;/li&gt;
+&lt;li&gt;git svn dcommit&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This works, and is fine as long as there are no other clones of your git repository out there. The mechanism outlined here has a fatal flaw: it modifies the change history of the &lt;em&gt;master&lt;/em&gt; branch. If you were working in a clone of a remote git repository and you were to run git status after the above steps, you would see something like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# On branch master&lt;/span&gt;
+&lt;span class="c"&gt;# Your branch and &amp;#39;origin/master&amp;#39; have diverged,&lt;/span&gt;
+&lt;span class="c"&gt;# and have 3 and 2 different commit(s) each, respectively.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you were then to try to push this to the remote repository, you would get an error:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;push&lt;/span&gt;
+&lt;span class="n"&gt;To&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;myrepo&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+ &lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;rejected&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;        &lt;span class="n"&gt;master&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;master&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;non&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fast&lt;/span&gt; &lt;span class="n"&gt;forward&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="nl"&gt;error:&lt;/span&gt; &lt;span class="n"&gt;failed&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;push&lt;/span&gt; &lt;span class="n"&gt;some&lt;/span&gt; &lt;span class="n"&gt;refs&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;myrepo&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In cases where the git change history is shared with other git repositories, we need a solution that does not modify the &lt;em&gt;master&lt;/em&gt; branch. We can get this my modifying the procedure slightly.&lt;/p&gt;
+&lt;p&gt;The initial sequence is still the same:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;svn mkdir $REPO/{trunk, tags, branches}&lt;/li&gt;
+&lt;li&gt;git svn init -s $REPO&lt;/li&gt;
+&lt;li&gt;git svn fetch&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;But instead of rebasing onto the &lt;em&gt;master&lt;/em&gt; branch, we create a local branch for managing the synchronization:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;git checkout -b svnsync&lt;/li&gt;
+&lt;li&gt;git rebase trunk&lt;/li&gt;
+&lt;li&gt;git svn dcommit&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;At this point we have changed the history of the &lt;em&gt;svnsync&lt;/em&gt; branch and we have left the &lt;em&gt;master&lt;/em&gt; branch untouched. Subsequent updates look like this:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;git checkout master&lt;/li&gt;
+&lt;li&gt;git pull&lt;/li&gt;
+&lt;li&gt;git checkout svnsync&lt;/li&gt;
+&lt;li&gt;git rebase master&lt;/li&gt;
+&lt;li&gt;git rebase trunk&lt;/li&gt;
+&lt;li&gt;git svn dcommit&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This gives us what we want: we can publish our git repository to a Subversion repository while maintaining the shared change history among our existing git clones.&lt;/p&gt;</summary><category term="git"></category><category term="subversion"></category><category term="vcs"></category></entry><entry><title>Cleaning up Subversion with Git</title><link href="http://blog-beta.oddbit.com/2010/01/29/cleaning-up-subversion-with-git/" rel="alternate"></link><updated>2010-01-29T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-01-29:2010/01/29/cleaning-up-subversion-with-git/</id><summary type="html">&lt;h1&gt;Overview&lt;/h1&gt;
+&lt;p&gt;At my office, we have a crufty &lt;a href="http://subversion.tigris.org/"&gt;Subversion&lt;/a&gt; repository (dating back to early 2006) that contains a jumble of unrelated projects. We would like to split this single repository up into a number of smaller repositories, each following the recommended trunk/tags/branches repository organization.&lt;/p&gt;
+&lt;p&gt;What we want to do is move a project from a path that looks like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;some&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;project&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;To a new repository using the recommended Subversion repository layout, like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;some&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;project&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;trunk&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Our lives are complicated by the fact that there has been a lot of mobility (renames/moves) of projects within the repository.&lt;/p&gt;
+&lt;h1&gt;Setup&lt;/h1&gt;
+&lt;p&gt;We'll set up a test environment that will demonstrate the problem and our solution.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;Create the empty repositories:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;set&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt;
+&lt;span class="n"&gt;rm&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rf&lt;/span&gt; &lt;span class="n"&gt;work&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="n"&gt;work&lt;/span&gt;
+&lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="n"&gt;work&lt;/span&gt;
+&lt;span class="n"&gt;WORKDIR&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;pwd&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="n"&gt;repos&lt;/span&gt;
+
+&lt;span class="cp"&gt;# create source repository&lt;/span&gt;
+&lt;span class="n"&gt;svnadmin&lt;/span&gt; &lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;repos&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;src&lt;/span&gt;
+
+&lt;span class="cp"&gt;# create destination reposiory&lt;/span&gt;
+&lt;span class="n"&gt;svnadmin&lt;/span&gt; &lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;repos&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dst&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Create our desired repository structure in the destination repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;trunk&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst/trunk&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;branches&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst/branches&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst/tags&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Create a simple revision history:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;co&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/src src&lt;/span&gt;
+&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="n"&gt;src&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Create our initial set of projects.&lt;/span&gt;
+&lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;
+&lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="n"&gt;project1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;project2&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="n"&gt;touch&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project1&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="n"&gt;file11&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;file12&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="n"&gt;touch&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project2&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="n"&gt;file21&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;file22&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;add&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;ci&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;initial&lt;/span&gt; &lt;span class="n"&gt;commit&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Relocate a file between projects.&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;mv&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project1&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file11&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project2&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;ci&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;moved&lt;/span&gt; &lt;span class="n"&gt;file11&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Rename a project.&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;mv&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project2&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project3&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;update&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;ci&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;renamed&lt;/span&gt; &lt;span class="n"&gt;project2&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;project3&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;We can see the structure of the source repository like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;Contents of source reposiory:&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;ls&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;R&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/src&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Your output should look something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project1&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project1&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file12&lt;/span&gt;
+&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project3&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project3&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file11&lt;/span&gt;
+&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project3&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file21&lt;/span&gt;
+&lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project3&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file22&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In this example, we'll try to import &lt;em&gt;project3&lt;/em&gt; into a new repository.&lt;/p&gt;
+&lt;h1&gt;Using Subversion&lt;/h1&gt;
+&lt;p&gt;With Subversion, it's easy to extract a single project from the repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;co&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/src/projects/project3&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This gives us a directory called project3 containing the contents of the project. Unfortunately, there are no tools that will allow us to take this working copy and move it into another repository.&lt;/p&gt;
+&lt;p&gt;Subversion includes a tool called svnadmin that allows on to perform a number of operations on a Subversion repository, but it requires access to the filesystem instance of the repository (it will not work over the network). This is a substantial limitation if you are working with a repository that is maintained by someone else, but we have the necessary access to our repository.&lt;/p&gt;
+&lt;p&gt;The svnadmin command includes a dump operation that serializes a repository -- and its entire revision history -- into a text stream that can be loaded into another repository with a corresponding load operation. We don't want the entire repository, so we'll make use of the svndumpfilter command which, as you might expect, can apply certain filters to the output of svnadmin dump.&lt;/p&gt;
+&lt;p&gt;We might try something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;svnadmin&lt;/span&gt; &lt;span class="n"&gt;dump&lt;/span&gt; &lt;span class="n"&gt;repos&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;src&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;svndumpfilter&lt;/span&gt; &lt;span class="n"&gt;include&lt;/span&gt; &lt;span class="n"&gt;projects&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;project3&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;svnadmin&lt;/span&gt; &lt;span class="n"&gt;load&lt;/span&gt; &lt;span class="n"&gt;repos&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dst&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Unforunately, this will fail with an error along the lines of:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;svndumpfilter&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Invalid&lt;/span&gt; &lt;span class="n"&gt;copy&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt; &lt;span class="n"&gt;path&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;/projects/project2&amp;#39;&lt;/span&gt;
+&lt;span class="n"&gt;svnadmin&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Can&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;t&lt;/span&gt; &lt;span class="n"&gt;write&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;stream&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Broken&lt;/span&gt; &lt;span class="n"&gt;pipe&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And if you were to look at the destination repository, you would find projec3 entirely absent:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;Contents of destination repository (after dump/filter/load):&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;ls&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;R&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And even if it worked we would still have to muck about in the destination repository to create our desired repository layout.&lt;/p&gt;
+&lt;h1&gt;Using Git&lt;/h1&gt;
+&lt;p&gt;&lt;a href="http://git-scm.com/"&gt;Git&lt;/a&gt; is another version control system, similar in some ways to &lt;a href="http://subversion.tigris.org/"&gt;Subversion&lt;/a&gt; but designed for distributed operation. If you're not familiar with git there is lots of documentation available online.&lt;/p&gt;
+&lt;p&gt;We'll start by checking out &lt;em&gt;project3&lt;/em&gt; from the Subversion repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;rm&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rf&lt;/span&gt; &lt;span class="n"&gt;project3&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;clone&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/src/projects/project3&lt;/span&gt;
+&lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="n"&gt;project3&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Because we're going to import this code into a new repository we need to erase all references to the source repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;branch&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rD&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;svn&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;config&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;remove&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;section&lt;/span&gt; &lt;span class="n"&gt;svn&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;remote&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;svn&lt;/span&gt;
+&lt;span class="n"&gt;rm&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rf&lt;/span&gt; &lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;git&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;svn&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And now we associate this git repository with the destination Subversion repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;init&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;fetch&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We now apply the revision history to the trunk of the destination repository and commit the changes:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;rebase&lt;/span&gt; &lt;span class="n"&gt;trunk&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;dcommit&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;After all of this, we have exactly what we want -- our project hosted in a new repository with our desired layout. The following commands show the contents of the repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;Contents of destination repository (after git):&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;ls&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;R&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And produce output like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;branches&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;tags&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;trunk&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="n"&gt;trunk&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file11&lt;/span&gt;
+&lt;span class="n"&gt;trunk&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file21&lt;/span&gt;
+&lt;span class="n"&gt;trunk&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;file22&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And the revision history of the project is available in the destination repository:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;Revision history in destination repository:&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;log&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//$WORKDIR/repos/dst&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The output will look something like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Revision&lt;/span&gt; &lt;span class="n"&gt;history&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;destination&lt;/span&gt; &lt;span class="n"&gt;repository&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+&lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;svn&lt;/span&gt; &lt;span class="n"&gt;log&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;///home/lars/projects/svn-to-svn-via-git/work/repos/dst&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r7&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;46&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;02&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;renamed&lt;/span&gt; &lt;span class="n"&gt;project2&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;project3&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r6&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;46&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;02&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;initial&lt;/span&gt; &lt;span class="n"&gt;commit&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r5&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;no&lt;/span&gt; &lt;span class="n"&gt;author&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;45&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;55&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;This&lt;/span&gt; &lt;span class="n"&gt;is&lt;/span&gt; &lt;span class="n"&gt;an&lt;/span&gt; &lt;span class="n"&gt;empty&lt;/span&gt; &lt;span class="n"&gt;revision&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;padding&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r4&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;no&lt;/span&gt; &lt;span class="n"&gt;author&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;45&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;53&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;This&lt;/span&gt; &lt;span class="n"&gt;is&lt;/span&gt; &lt;span class="n"&gt;an&lt;/span&gt; &lt;span class="n"&gt;empty&lt;/span&gt; &lt;span class="n"&gt;revision&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;padding&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r3&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;45&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;52&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;tags&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;45&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;52&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;branches&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;span class="n"&gt;r1&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;45&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;52&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Wed&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;Jun&lt;/span&gt; &lt;span class="mi"&gt;2009&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;line&lt;/span&gt;
+
+&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;trunk&lt;/span&gt;
+&lt;span class="o"&gt;------------------------------------------------------------------------&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;</summary><category term="svn"></category><category term="versioncontrol"></category><category term="git"></category><category term="subversion"></category></entry></feed>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/gpxe/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2010-07-22T00:00:00-04:00</updated><entry><title>Patch to gPXE dhcp command</title><link href="http://blog-beta.oddbit.com/2010/07/22/patch-to-gpxe-dhcp-command/" rel="alternate"></link><updated>2010-07-22T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-07-22:2010/07/22/patch-to-gpxe-dhcp-command/</id><summary type="html">&lt;p&gt;&lt;strong&gt;Update&lt;/strong&gt;: This patch has been &lt;a href="http://git.etherboot.org/?p=gpxe.git;a=commit;h=fa91c2c3269554df855107a24afec9a1149fee8f"&gt;accepted&lt;/a&gt; into gPXE.&lt;/p&gt;
+&lt;p&gt;I just released a &lt;a href="http://gist.github.com/486907"&gt;patch&lt;/a&gt; to &lt;a href="http://etherboot.org/wiki/index.php"&gt;gPXE&lt;/a&gt; that modifies the dhcp command so that it can iterate over multiple interfaces. The stock dhcp command only accepts a single interface as an argument, which can be a problem if you are trying to boot on a machine with multiple interfaces. The builtin autoboot commands attempts to resolve this, but is only useful if you expect to receive appropriate boot parameters from your dhcp server.&lt;/p&gt;
+&lt;p&gt;My patch extends the dhcp command in the following ways:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;It allows the "dhcp" command to accept a list of interfaces and to try them in order until it succeeds, e.g.:&lt;/p&gt;
+&lt;p&gt;gPXE&amp;gt; dhcp net0 net1 net2&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;In order to preserve the original syntax of the command, this will fail on an unknown interface name:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;gPXE&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;dhcp&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt; &lt;span class="n"&gt;net0&lt;/span&gt;
+&lt;span class="n"&gt;No&lt;/span&gt; &lt;span class="n"&gt;such&lt;/span&gt; &lt;span class="n"&gt;interface&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt;
+&lt;span class="n"&gt;gPXE&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The "-c" flag allows it to continue:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;gPXE&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;dhcp&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt; &lt;span class="n"&gt;net0&lt;/span&gt;
+&lt;span class="n"&gt;No&lt;/span&gt; &lt;span class="n"&gt;such&lt;/span&gt; &lt;span class="n"&gt;interface&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt;
+&lt;span class="n"&gt;DHCP&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt; &lt;span class="n"&gt;xx&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;xx&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;xx&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;xx&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;xx&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;xx&lt;/span&gt;&lt;span class="p"&gt;)....&lt;/span&gt; &lt;span class="n"&gt;ok&lt;/span&gt;
+&lt;span class="n"&gt;gPXE&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;If given the single parameter "any" as an interface name, iterate over all known interfaces in a manner similar to autoboot():&lt;/p&gt;
+&lt;p&gt;gPXE&amp;gt; dhcp any
+DHCP (net0 xx:xx:xx:xx:xx:xx)........ Connection timed out (...)
+Could not configure net0: Connection timed out (...)
+DHCP (net1 xx:xx:xx:xx:xx:xx).... ok
+gPXE&amp;gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;I think this manages to preserve the syntax of the existing "dhcp" command while making the magic of autoboot available to gpxe scripts.&lt;/p&gt;</summary><category term="gpxe"></category><category term="linux"></category><category term="dhcp"></category></entry></feed>

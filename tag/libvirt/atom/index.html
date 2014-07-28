@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/libvirt/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2013-10-04T00:00:00-04:00</updated><entry><title>Automatic hostname entries for libvirt domains</title><link href="http://blog-beta.oddbit.com/2013/10/04/automatic-dns-entries-for-libvirt-domains/" rel="alternate"></link><updated>2013-10-04T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-10-04:2013/10/04/automatic-dns-entries-for-libvirt-domains/</id><summary type="html">&lt;p&gt;Have you ever wished that you could use &lt;code&gt;libvirt&lt;/code&gt; domain names as
+hostnames?  So that you could do something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;virt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;install&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;n&lt;/span&gt; &lt;span class="n"&gt;anewhost&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ssh&lt;/span&gt; &lt;span class="n"&gt;clouduser&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;anewhost&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Since this is something that would certainly make my life convenient,
+I put together a small script called &lt;a href="https://raw.github.com/larsks/virt-utils/master/virt-hosts"&gt;virt-hosts&lt;/a&gt; that makes this
+possible.  You can find &lt;a href="https://raw.github.com/larsks/virt-utils/master/virt-hosts"&gt;virt-hosts&lt;/a&gt; in my &lt;a href="https://raw.github.com/larsks/virt-utils/"&gt;virt-utils&lt;/a&gt; GitHub
+repository:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;https://raw.github.com/larsks/virt-utils/master/virt-hosts&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Run by itself, with no options, &lt;code&gt;virt-hosts&lt;/code&gt; will scan through your
+running domains for interfaces on the libvirt &lt;code&gt;default&lt;/code&gt; network, look
+up those MAC addresses up in the corresponding &lt;code&gt;default.leases&lt;/code&gt; file,
+and then generate a hosts file on &lt;code&gt;stdout&lt;/code&gt; like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;virt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;hosts&lt;/span&gt;
+&lt;span class="mf"&gt;192.168.122.221&lt;/span&gt; &lt;span class="n"&gt;compute&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;tmp0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt; &lt;span class="n"&gt;compute&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;tmp0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;
+&lt;span class="mf"&gt;192.168.122.101&lt;/span&gt; &lt;span class="n"&gt;centos&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt; &lt;span class="n"&gt;centos&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;0.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;
+&lt;span class="mf"&gt;192.168.122.214&lt;/span&gt; &lt;span class="n"&gt;controller&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;tmp&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt; &lt;span class="n"&gt;controller&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;tmp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Each address will be assigned the name
+&lt;code&gt;&amp;lt;domain_name&amp;gt;-&amp;lt;interface_name&amp;gt;.&amp;lt;network_name&amp;gt;.virt&lt;/code&gt;.  The first
+interface on the network will also be given the alias
+&lt;code&gt;&amp;lt;domain_name&amp;gt;.&amp;lt;network_name&amp;gt;.virt&lt;/code&gt;, so a host with multiple
+interfaces on the same network would look like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;virt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;hosts&lt;/span&gt;
+&lt;span class="mf"&gt;192.168.122.221&lt;/span&gt; &lt;span class="n"&gt;host0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt; &lt;span class="n"&gt;host0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;
+&lt;span class="mf"&gt;192.168.122.110&lt;/span&gt; &lt;span class="n"&gt;host0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;net1&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Of course, this is only half the solution: having generated a hosts
+file we need to put it somewhere where your system can find it.&lt;/p&gt;
+&lt;h2&gt;An aside: incron&lt;/h2&gt;
+&lt;p&gt;Both of the following solutions rely on &lt;a href="http://inotify.aiken.cz/?section=incron&amp;amp;page=about&amp;amp;lang=en"&gt;incron&lt;/a&gt;, a tool that uses
+the Linux &lt;a href="http://en.wikipedia.org/wiki/Inotify"&gt;inotify&lt;/a&gt; subsystem to trigger scripts in reaction to
+events on file and directories.  In this case, we'll be using &lt;code&gt;incron&lt;/code&gt;
+to monitor the dnsmasq &lt;code&gt;default.leases&lt;/code&gt; file and firing off a script
+when it changes.&lt;/p&gt;
+&lt;p&gt;You could accomplish the same thing using the &lt;code&gt;inotifywait&lt;/code&gt; program
+from the &lt;a href="https://github.com/rvoicilas/inotify-tools/wiki"&gt;inotify-tools&lt;/a&gt; package and a small wrapper script, or you
+could hook up something to the libvirt events framework.&lt;/p&gt;
+&lt;h2&gt;Using /etc/hosts&lt;/h2&gt;
+&lt;p&gt;If you want to update your &lt;code&gt;/etc/hosts&lt;/code&gt; file, you can place the
+following into a script called &lt;code&gt;update-virt-hosts&lt;/code&gt; (somewhere in
+root's &lt;code&gt;PATH&lt;/code&gt;) and run that via &lt;a href="http://inotify.aiken.cz/?section=incron&amp;amp;page=about&amp;amp;lang=en"&gt;incron&lt;/a&gt;:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3
+4
+5
+6
+7
+8&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+sed -i &lt;span class="s1"&gt;&amp;#39;/^# BEGIN VIRT HOSTS/,/^# END VIRT HOSTS/ d&amp;#39;&lt;/span&gt; /etc/hosts
+cat &lt;span class="s"&gt;&amp;lt;&amp;lt;EOF &amp;gt;&amp;gt;/etc/hosts&lt;/span&gt;
+&lt;span class="s"&gt;# BEGIN VIRT HOSTS&lt;/span&gt;
+&lt;span class="s"&gt;$(virt-hosts)&lt;/span&gt;
+&lt;span class="s"&gt;# END VIRT HOSTS&lt;/span&gt;
+&lt;span class="s"&gt;EOF&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;Make sure you have &lt;code&gt;incron&lt;/code&gt; installed, and add the following to
+&lt;code&gt;/etc/incron.d/virt-hosts&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lib&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;libvirt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dnsmasq&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;leases&lt;/span&gt; &lt;span class="n"&gt;IN_MODIFY&lt;/span&gt; &lt;span class="n"&gt;update&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;hosts&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This will cause &lt;code&gt;incron&lt;/code&gt; to run your &lt;code&gt;update-virt-hosts&lt;/code&gt; script
+whenever it sees an &lt;code&gt;IN_MODIFY&lt;/code&gt; event on the &lt;code&gt;default.leases&lt;/code&gt; file.&lt;/p&gt;
+&lt;h2&gt;Using NetworkManager + dnsmasq&lt;/h2&gt;
+&lt;p&gt;I am running NetworkManager with the &lt;code&gt;dnsmasq&lt;/code&gt; dns plugin. I created
+the file &lt;code&gt;/etc/NetworkManager/dnsmasq.d/virthosts&lt;/code&gt; containing:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;addn&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;hosts&lt;/span&gt;&lt;span class="o"&gt;=/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lib&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;libvirt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dnsmasq&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;addnhosts&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This will cause the &lt;code&gt;dnsmasq&lt;/code&gt; process started by &lt;code&gt;NetworkManager&lt;/code&gt; to
+use that file as an additional hosts file.  I then installed the
+&lt;code&gt;incron&lt;/code&gt; package and dropped the following in
+&lt;code&gt;/etc/incron.d/virt-hosts&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lib&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;libvirt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dnsmasq&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;leases&lt;/span&gt; &lt;span class="n"&gt;IN_MODIFY&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;local&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;virt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;hosts&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ur&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This has &lt;code&gt;incron&lt;/code&gt; listen for changes to the &lt;code&gt;default.leases&lt;/code&gt; file, and
+whenever it receives the &lt;code&gt;IN_MODIFY&lt;/code&gt; event it runs &lt;code&gt;virt-hosts&lt;/code&gt; with
+the &lt;code&gt;-u&lt;/code&gt; (aka &lt;code&gt;--update&lt;/code&gt;) and &lt;code&gt;-r&lt;/code&gt; (aka &lt;code&gt;--reload-dnsmasq&lt;/code&gt;) flags.
+Thef former causes &lt;code&gt;virt-hosts&lt;/code&gt; to send output to
+&lt;code&gt;/var/lib/libvirt/dnsmasq/default.addnhosts&lt;/code&gt; instead of &lt;code&gt;stdout&lt;/code&gt;, and
+the latter does a &lt;code&gt;killall -HUP dnsmasq&lt;/code&gt; after installing the new
+hosts file.&lt;/p&gt;</summary><category term="libvirt"></category><category term="virtualization"></category></entry></feed>

@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/ssl/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2011-05-09T00:00:00-04:00</updated><entry><title>Signing data with ssh-agent</title><link href="http://blog-beta.oddbit.com/2011/05/09/signing-data-with-ssh-agent/" rel="alternate"></link><updated>2011-05-09T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2011-05-09:2011/05/09/signing-data-with-ssh-agent/</id><summary type="html">&lt;p&gt;This is follow-up to my previous post, &lt;a href="http://blog.oddbit.com/2011/05/08/converting-openssh-public-keys/"&gt;Converting OpenSSH public keys&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;OpenSSH allows one to use an &lt;em&gt;agent&lt;/em&gt; that acts as a proxy to your private key. When using an agent -- particularly with agent forwarding enabled -- this allows you to authenticate to a remote host without having to (a) repeatedly type in your password or (b) expose an unencrypted private key to remote systems.&lt;/p&gt;
+&lt;p&gt;If one is temtped to use SSH keys as authentication credentials outside of ssh, one would ideally be able to take advantage of the ssh agent for these same reasons.&lt;/p&gt;
+&lt;p&gt;This article discusses what is required to programmatically interact with the agent and with the OpenSSL libraries for signing data and verifying signatures.&lt;/p&gt;
+&lt;h4&gt;Signing data with ssh-agent&lt;/h4&gt;
+&lt;p&gt;The SSH agent does not provide clients with direct access to an unencrypted private key. Rather, it will accept data from the client and return the signature of the SHA1 hash of the data.&lt;/p&gt;
+&lt;p&gt;The agent communicates over a unix socket using the &lt;a href="http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.agent?rev=HEAD;content-type=text%2Fplain"&gt;ssh agent protocol&lt;/a&gt; defined in &lt;a href="http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/authfd.h?rev=HEAD;content-type=text%2Fplain"&gt;authfd.h&lt;/a&gt;. The Python &lt;a href="http://www.lag.net/paramiko/"&gt;Paramiko&lt;/a&gt; libary (a pure-python implementation of ssh) includes support for interacting with an ssh agent.&lt;/p&gt;
+&lt;p&gt;Signing data is very simple:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;
+&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;paramiko&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt;
+
+&lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;something&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="n"&gt;data_sha1&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sha1&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;digest&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;paramiko&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Agent&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;keys&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sign_ssh_data&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;None&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;data_sha1&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Internally, the agent computes the SHA1 digest for the data, signs this using the selected key, and returns a &lt;em&gt;signature_blob&lt;/em&gt; that varies depending on the key type in use. For an RSA signature, the result format is a series of (length, data) pairs, where the length is encoded as a four-byte unsigned integer. The response contains the following elements:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;algorithm name (ssh-rsa)&lt;/li&gt;
+&lt;li&gt;rsa signature&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;For example, after signing some data using a 1024-bit private key, the value returned from sign_ssh_data looked like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="mi"&gt;0000000&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;0000&lt;/span&gt; &lt;span class="mi"&gt;0007&lt;/span&gt; &lt;span class="mi"&gt;7373&lt;/span&gt; &lt;span class="mi"&gt;682&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="mi"&gt;7273&lt;/span&gt; &lt;span class="mi"&gt;6100&lt;/span&gt; &lt;span class="mi"&gt;0000&lt;/span&gt; &lt;span class="mi"&gt;8027&lt;/span&gt;  &lt;span class="o"&gt;....&lt;/span&gt;&lt;span class="n"&gt;ssh&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rsa&lt;/span&gt;&lt;span class="o"&gt;....&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;0000010: 953c 771c 5ee4 f4b0 9849 c061 0ac2 2adb  .&amp;lt;w.^....I.a..*.&lt;/span&gt;
+&lt;span class="s1"&gt;0000020: b53d 2bcb a545 8dbb d582 05e5 a916 6490  .=+..E........d.&lt;/span&gt;
+&lt;span class="s1"&gt;0000030: 1b67 3210 9bfc c74d d0ad 5011 394b a3fe  .g2....M..P.9K..&lt;/span&gt;
+&lt;span class="s1"&gt;0000040: 96e2 910b bbfd 19cd 73e5 6720 503a 95e1  ........s.g P:..&lt;/span&gt;
+&lt;span class="s1"&gt;0000050: 5b8b 63c4 14a3 ec3d bf57 846e f0b4 e66c  [.c....=.W.n...l&lt;/span&gt;
+&lt;span class="s1"&gt;0000060: ce5d 6327 6055 b4e2 3c14 c13f 8303 4b1a  .]c&amp;#39;&lt;/span&gt;&lt;span class="err"&gt;`&lt;/span&gt;&lt;span class="n"&gt;U&lt;/span&gt;&lt;span class="o"&gt;..&amp;lt;..?..&lt;/span&gt;&lt;span class="n"&gt;K&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;
+&lt;span class="mi"&gt;0000070&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;7&lt;/span&gt;&lt;span class="n"&gt;ce3&lt;/span&gt; &lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;f33&lt;/span&gt; &lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;e7c&lt;/span&gt; &lt;span class="mi"&gt;7&lt;/span&gt;&lt;span class="n"&gt;ca4&lt;/span&gt; &lt;span class="n"&gt;a97b&lt;/span&gt; &lt;span class="mi"&gt;506&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="n"&gt;fa0b&lt;/span&gt; &lt;span class="n"&gt;a39e&lt;/span&gt;  &lt;span class="o"&gt;|..&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="o"&gt;.||..{&lt;/span&gt;&lt;span class="n"&gt;Pm&lt;/span&gt;&lt;span class="o"&gt;....&lt;/span&gt;
+&lt;span class="mi"&gt;0000080&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cb53&lt;/span&gt; &lt;span class="n"&gt;befc&lt;/span&gt; &lt;span class="n"&gt;d725&lt;/span&gt; &lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;cd1&lt;/span&gt; &lt;span class="n"&gt;a8af&lt;/span&gt; &lt;span class="mi"&gt;6042&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt;&lt;span class="n"&gt;ac8&lt;/span&gt; &lt;span class="mi"&gt;01&lt;/span&gt;    &lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;S&lt;/span&gt;&lt;span class="o"&gt;...%....&lt;/span&gt;&lt;span class="err"&gt;`&lt;/span&gt;&lt;span class="n"&gt;BZ&lt;/span&gt;&lt;span class="o"&gt;..&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The first four bytes (0000 0007) are the length of the algorithm name (ssh-rsa). The next field is the length of the signature (0000 0080, or 128 bytes), followed by the signature data. This means we can extract the signature data like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;parts&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+&lt;span class="k"&gt;while&lt;/span&gt; &lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;len&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;struct&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;unpack&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;I&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="p"&gt;])[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="n"&gt;bits&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;len&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="n"&gt;parts&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bits&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;len&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+
+&lt;span class="n"&gt;sig&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;parts&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="n"&gt;open&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;signature&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="sc"&gt;&amp;#39;w&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sig&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h4&gt;Signing the data with OpenSSL&lt;/h4&gt;
+&lt;h5&gt;Using M2Crypto&lt;/h5&gt;
+&lt;p&gt;You can accomplish the same thing using the &lt;a href="http://sandbox.rulemaker.net/ngps/m2/"&gt;M2Crypto&lt;/a&gt; library for Python like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;
+&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;RSA&lt;/span&gt;
+
+&lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;something&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="n"&gt;data_sha1&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sha1&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;digest&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;RSA&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;load_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;testkey&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;sig&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data_sha1&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;open&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;signature&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="sc"&gt;&amp;#39;w&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sig&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This assumes that testkey is the private key file corresponding to the first key loaded into your agent in the previous example.&lt;/p&gt;
+&lt;h5&gt;Using the command line&lt;/h5&gt;
+&lt;p&gt;You can also generate an equivalent signature using the OpenSSL command line tools:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;n&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;something&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;openssl&lt;/span&gt; &lt;span class="n"&gt;sha1&lt;/span&gt;  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;binary&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;openssl&lt;/span&gt; &lt;span class="n"&gt;pkeyutl&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;sign&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;inkey&lt;/span&gt; &lt;span class="n"&gt;testkey&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;pkeyopt&lt;/span&gt; &lt;span class="n"&gt;digest&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;sha1&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;signature&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Note that including -pkeyopt digest:sha1 is necessary to get a signature block that is compatible with the one returned by the ssh agent. The pkeyutl man page has this to say:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;In PKCS#1 padding if the message digest is not set then the supplied data is signed or verified directly instead of using a DigestInfo structure. If a digest is set then the a DigestInfo structure is used and its the length must correspond to the digest type.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h4&gt;Veryfying the data&lt;/h4&gt;
+&lt;p&gt;You can verify the signature using the corresponding public key.&lt;/p&gt;
+&lt;h5&gt;Using M2Crypto&lt;/h5&gt;
+&lt;p&gt;This uses the &lt;a href="http://sandbox.rulemaker.net/ngps/m2/"&gt;M2Crypto&lt;/a&gt; module to verify the signature computed in the previous step:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;
+&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;RSA&lt;/span&gt;
+
+&lt;span class="cp"&gt;# let&amp;#39;s pretend that you&amp;#39;ve read my previous blog post and have&lt;/span&gt;
+&lt;span class="cp"&gt;# created an &amp;quot;sshkey&amp;quot; module for reading the ssh public key format.&lt;/span&gt;
+&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;sshkey&lt;/span&gt;
+
+&lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;something&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="n"&gt;data_sha1&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sha1&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;digest&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+&lt;span class="cp"&gt;# read the signature generated in the previous step&lt;/span&gt;
+&lt;span class="n"&gt;sig&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;open&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;signature&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;read&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;n&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;sshkey&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;load_rsa_pub_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;testkey&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;pub&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;RSA&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;new_pub_key&lt;/span&gt;&lt;span class="p"&gt;((&lt;/span&gt;
+    &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;m2&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;bn_to_mpi&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;m2&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;hex_to_bn&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;hex&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="p"&gt;)[&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="p"&gt;])),&lt;/span&gt;
+    &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;m2&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;bn_to_mpi&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;m2&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;hex_to_bn&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;hex&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)[&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="p"&gt;])),&lt;/span&gt;
+    &lt;span class="p"&gt;))&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;verify&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data_sha1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;sig&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Verified&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="nl"&gt;else:&lt;/span&gt;
+  &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Failed&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you have converted the ssh public key into a standard format, you could do this instead:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;
+&lt;span class="n"&gt;import&lt;/span&gt; &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;RSA&lt;/span&gt;
+
+&lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;something&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="n"&gt;data_sha1&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sha1&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;digest&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+&lt;span class="cp"&gt;# read the signature generated in the previous step&lt;/span&gt;
+&lt;span class="n"&gt;sig&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;open&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;signature&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="n"&gt;read&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+&lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;M2Crypto&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;RSA&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;load_pub_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;testkey&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;pubssl&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;verify&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;data_sha1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;sig&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Verified&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="nl"&gt;else:&lt;/span&gt;
+  &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Failed&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h5&gt;Using OpenSSL&lt;/h5&gt;
+&lt;p&gt;We can do the same thing on the command line, but we'll first need to convert the ssh public key into a format useful to OpenSSL. This is easy if you have the private key handy...which we do:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;openssl&lt;/span&gt; &lt;span class="n"&gt;rsa&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;testkey&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;pubout&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;testkey&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;pubssl&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And now we can verify the signature:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;echo&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;something&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;sign&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;openssl&lt;/span&gt; &lt;span class="n"&gt;sha1&lt;/span&gt;  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;binary&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;openssl&lt;/span&gt; &lt;span class="n"&gt;pkeyutl&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;verify&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;sigfile&lt;/span&gt; &lt;span class="n"&gt;signature&lt;/span&gt; \
+    &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;pubin&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;inkey&lt;/span&gt; &lt;span class="n"&gt;testkey&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;pubssl&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;pkeyopt&lt;/span&gt; &lt;span class="n"&gt;digest&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;sha1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;</summary><category term="ssl"></category><category term="ssh"></category><category term="openssl"></category><category term="ssh-agent"></category><category term="openssh"></category><category term="rsa"></category><category term="cryptography"></category></entry><entry><title>LDAP redundancy through proxy servers</title><link href="http://blog-beta.oddbit.com/2010/02/24/ldap-redundancy-through-proxy-servers/" rel="alternate"></link><updated>2010-02-24T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-02-24:2010/02/24/ldap-redundancy-through-proxy-servers/</id><summary type="html">&lt;h1&gt;Problem 1: Failover&lt;/h1&gt;
+&lt;h2&gt;The problem&lt;/h2&gt;
+&lt;p&gt;Many applications only allow you to configure a single LDAP server. This can lead to unnecessary service outages if your directory service infrastructure is highly available (e.g., you are running Active Directory) and your application cannot take advantage of this fact.&lt;/p&gt;
+&lt;h2&gt;A solution&lt;/h2&gt;
+&lt;p&gt;We can provide a level of redundancy by passing the LDAP connections through a load balancing proxy. While this makes the proxy a single point of failure, it is (a) a very simple tool and thus less prone to complex failure modes, (b) running on the same host as the web application, and (c) is completely under our control.&lt;/p&gt;
+&lt;p&gt;For this example, I will use &lt;a href="http://www.inlab.de/balance.html"&gt;Balance&lt;/a&gt;, a simple TCP load balancer from &lt;a href="http://www.inlab.de/"&gt;Inlab Software GmbH&lt;/a&gt;. There are packages available for most major Linux distributions, including &lt;a href="http://fedoraproject.org/"&gt;Fedora&lt;/a&gt; and &lt;a href="http://www.centos.org/"&gt;CentOS&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Balance is configured completely on the command line. To provide round-robin access to a suite of three directory servers running LDAP over SSL, you might use the following command line:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;balance&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="mf"&gt;127.0.0.1&lt;/span&gt; &lt;span class="mi"&gt;636&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.1&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Using balance's terminology, this creates one &lt;em&gt;group&lt;/em&gt; of two &lt;em&gt;channels&lt;/em&gt;. Balance will round-robin among the channels in this group. Note that here and in subsequent examples we are binding the proxy to the loopback interface so that it is only available to applications running on the same host.&lt;/p&gt;
+&lt;p&gt;If you would prefer to preferentially send all the requests to the first server, and only use the second server if the first is unavailable, you could use a configuration like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;balance&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="mf"&gt;127.0.0.1&lt;/span&gt; &lt;span class="mi"&gt;636&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.1&lt;/span&gt; &lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While you can run balance from a standard init (/etc/rc.d/...) script, I prefer to use a service manager such as &lt;a href="http://smarden.org/runit/"&gt;runit&lt;/a&gt; which takes care of restarting the service if it should exit unexpectedly. You could achieve the same thing in a slightly less flexible fashion by putting your balance command line in /etc/inittab. In either case you need to add the -f option to the command line, which causes balance to stay in the foreground.&lt;/p&gt;
+&lt;h1&gt;Problem 2: Debugging LDAP over SSL&lt;/h1&gt;
+&lt;h2&gt;The problem&lt;/h2&gt;
+&lt;p&gt;It is convenient to use a packet tracer such as &lt;a href="http://www.wireshark.org/"&gt;Wireshark&lt;/a&gt; to debug LDAP protocol errors. This is often more informative than the debugging information that will be available to you on the client side, and may be more useful than server side debugging in many cases, even supposing that you have administrative access to the directory servers.&lt;/p&gt;
+&lt;h2&gt;A solution&lt;/h2&gt;
+&lt;p&gt;You can use &lt;a href="http://www.stunnel.org/"&gt;Stunnel&lt;/a&gt;, a general purpose SSL proxy tool, to intercept unencrypted client connections on the local machine and then forward them over an SSL channel to a remote server. This makes the unencrypted LDAP traffic available on the loopback interface while still ensuring that it is encrypted on the wire.&lt;/p&gt;
+&lt;p&gt;Stunnel can operate both as an SSL server and as an SSL client. In this case, we will be running it in client mode, connecting to a remote SSL server (or to the proxy configured in our previous example). Stunnel is configured by means of a simple INI-style configuration file. To achieve the goals of this example we might put the following configuration in a file (say, stunnel.conf):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ldap]&lt;/span&gt;
+
+&lt;span class="na"&gt;accept&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;127.0.0.1:389&lt;/span&gt;
+&lt;span class="na"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;yes&lt;/span&gt;
+&lt;span class="na"&gt;connect&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;localhost:636&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We would run stunnel like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;stunnel&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;to&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;stunnel&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Again, I would run this under the control of a service supervisor. To keep stunnel in the foreground we would add the following to the global section of the configuration file (i.e., before the &lt;code&gt;[ldap]&lt;/code&gt; section marker):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;foreground&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;yes&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With both of these solutions in place, we have achieved the following:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;High availability.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our application will transparently make use of multiple directory servers. If a server fails, our application will continue to operate.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Security&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our traffic is encrypted on the wire, regardless of whether the application has support for LDAP over SSL.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Visibility&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;We are free to examine unencrypted traffic with a packet sniffer running on the local host.&lt;/p&gt;</summary><category term="balance"></category><category term="ldap"></category><category term="stunnel"></category><category term="proxy"></category><category term="ha"></category><category term="howto"></category><category term="ssl"></category></entry></feed>

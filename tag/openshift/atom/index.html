@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/openshift/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2013-11-23T00:00:00-05:00</updated><entry><title>Sockets on OpenShift</title><link href="http://blog-beta.oddbit.com/2013/11/23/openshift-socket-pro/" rel="alternate"></link><updated>2013-11-23T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-11-23:2013/11/23/openshift-socket-pro/</id><summary type="html">&lt;p&gt;In this article, a followup to my [previous post][] regarding
+long-poll servers and Python, we investigate the code changes that
+were necessary to make the code work when deployed on OpenShift.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;p&gt;In the previous post, we implemented IO polling to watch for client
+disconnects at the same time we were waiting for messages on a message
+bus:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;poll&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;zmq&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;Poller&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;poll&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;register&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;subsock&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;zmq&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;POLLIN&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;poll&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="k"&gt;register&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;rfile&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;zmq&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;POLLIN&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;events&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;poll&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;poll&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt;
+
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you were to try this at home, you would find that everything worked
+as described...but if you were to deploy the same code to OpenShift,
+you would find that the problem we were trying to solve (the server
+holding file descriptors open after a client disconnected) would still
+exist.&lt;/p&gt;
+&lt;p&gt;So, what's going on here?  I spent a chunk of time trying to figure
+this out myself.  I finally found &lt;a href="https://www.openshift.com/blogs/paas-websockets"&gt;this post&lt;/a&gt; by
+Marak Jelen discussing issues with &lt;a href="http://en.wikipedia.org/wiki/WebSocket"&gt;websockets&lt;/a&gt; in OpenShift, which
+says, among other things:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;For OpenShift as a PaaS provider, WebSockets were a big challenge.
+The routing layer that sits between the user's browser and your
+application must be able to route and handle WebSockets. OpenShift
+uses Apache as a reverse proxy server and a main component to route
+requests throughout the platform. However, Apache's mod_proxy has
+been problematic with WebSockets, so OpenShift implemented a new
+Node.js based routing layer that provides scalability and the
+possibility to expand features provided to our users.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;In order to work around these problems, an alternate &lt;a href="http://nodejs.org/"&gt;Node.js&lt;/a&gt; based
+front-end has been deployed on port 8000.  So if your application is
+normally available at &lt;code&gt;http://myapplication-myname.rhcloud.com&lt;/code&gt;, you
+can also access it at &lt;code&gt;http://myapplication-myname.rhcloud.com:8000&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Not unexpectedly, it seems that the same things that can cause
+difficulties with WebSockets connections can also interfere with the
+operation of a long-poll server.  The root of the problem is that your
+service running on OpenShift never receives notifications of client
+disconnects.  You can see this by opening up a connection to your
+service.  Assuming that you've deployed the &lt;a href="https://github.com/larsks/pubsub_example/"&gt;pubsub example&lt;/a&gt;, you
+can run something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;curl&lt;/span&gt; &lt;span class="n"&gt;http&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//myapplication-myname.rhcloud.com/sub&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Leave the connection open and &lt;a href="https://www.openshift.com/developers/remote-access"&gt;log in to your OpenShift
+instance&lt;/a&gt;.  Run &lt;code&gt;netstat&lt;/code&gt; to see the existing connection:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;netstat&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;tan&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;grep&lt;/span&gt; &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;OPENSHIFT_PYTHON_IP&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;grep&lt;/span&gt; &lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;OPENSHIFT_PYTHON_PORT&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+  &lt;span class="n"&gt;grep&lt;/span&gt; &lt;span class="n"&gt;ESTABLISHED&lt;/span&gt;
+&lt;span class="n"&gt;tcp&lt;/span&gt;        &lt;span class="mi"&gt;0&lt;/span&gt;      &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="mf"&gt;127.6.26.1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;15368&lt;/span&gt;            &lt;span class="mf"&gt;127.6.26.1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;8080&lt;/span&gt;             &lt;span class="n"&gt;ESTABLISHED&lt;/span&gt; 
+&lt;span class="n"&gt;tcp&lt;/span&gt;        &lt;span class="mi"&gt;0&lt;/span&gt;      &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="mf"&gt;127.6.26.1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;8080&lt;/span&gt;             &lt;span class="mf"&gt;127.6.26.1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;15368&lt;/span&gt;            &lt;span class="n"&gt;ESTABLISHED&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Now close your client, and re-run the &lt;code&gt;netstat&lt;/code&gt; command on your
+OpenShift instance.  You will find that the client connection  from
+the front-end proxies to your server is still active.  Because the
+server never receives any notification that the client has closed the
+connection, no amount of &lt;code&gt;select&lt;/code&gt; or &lt;code&gt;poll&lt;/code&gt; or anything else will
+solve this problem.&lt;/p&gt;
+&lt;p&gt;Now, try the same experiment using port 8000.  That is, run:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;curl&lt;/span&gt; &lt;span class="n"&gt;http&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//myapplication-myname.rhcloud.com:8000/sub&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Verify that when you close your client, the connection is long evident
+in your server.  This means that we need to modify our JavaScript code
+to poll using port 8000, which is why in &lt;a href="https://github.com/larsks/pubsub_example/blob/master/static/pubsub.js"&gt;pubsub.js&lt;/a&gt; you will find
+the following:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;using_openshift&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="n"&gt;poll_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;location&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;protocol&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;//&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;location&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;hostname&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;:8000/sub&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="k"&gt;else&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="n"&gt;poll_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;/sub&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;But wait, there's more!&lt;/h2&gt;
+&lt;p&gt;If you were to deploy the above code with no other changes, you would
+find a mysterious problem: even though your JavaScript console would
+show that your code was successfully polling the server, your client
+would never update.  This is because by introducing an alternate port
+number to the poll operation you are now running afoul of your
+brower's &lt;a href="http://en.wikipedia.org/wiki/Same-origin_policy"&gt;same origin policy&lt;/a&gt;, a security policy that restricts
+JavaScript in your browser from interacting with sites other than the
+one from which the script was loaded.&lt;/p&gt;
+&lt;p&gt;The &lt;a href="http://en.wikipedia.org/wiki/Cross-origin_resource_sharing"&gt;CORS&lt;/a&gt; standard introduces a mechanism to work around this
+restriction.  An HTTP response can contain additional access control
+headers that instruct your browser to permit access to the resource from
+a select set of other origins.  The header is called
+&lt;code&gt;Access-Control-Alliow-Origin&lt;/code&gt;, and you will find it in the &lt;a href="https://github.com/larsks/pubsub_example/"&gt;pubsub
+example&lt;/a&gt; in &lt;a href="https://github.com/larsks/pubsub_example/blob/master/pubsub.py"&gt;pubsub.py&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;using_openshift&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;bottle&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;response&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;headers&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;Access&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;Control&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;Allow&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;Origin&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sc"&gt;&amp;#39;*&amp;#39;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With this header in place, your JavaScript can poll your
+OpenShift-hosted application on port 8000 and everything will work as
+expected...&lt;/p&gt;
+&lt;p&gt;...barring bugs in my code, which, if discovered, should be reported
+&lt;a href="https://github.com/larsks/pubsub_example/issues"&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;[previous post]: {% post_url 2013-11-23-long-polling-with-ja %}&lt;/p&gt;</summary><category term="openshift"></category><category term="javascript"></category></entry></feed>

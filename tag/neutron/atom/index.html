@@ -1,0 +1,894 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/neutron/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2014-05-28T00:00:00-04:00</updated><entry><title>Booting an instance with multiple fixed addresses</title><link href="http://blog-beta.oddbit.com/2014/05/28/booting-an-instance-with-multi/" rel="alternate"></link><updated>2014-05-28T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-05-28:2014/05/28/booting-an-instance-with-multi/</id><summary type="html">&lt;p&gt;This article expands on my answer to &lt;a href="https://ask.openstack.org/en/question/30690/add-multiple-specific-ips-to-instance/"&gt;Add multiple specific IPs to
+instance&lt;/a&gt;, a question posted to &lt;a href="https://ask.openstack.org/"&gt;ask.openstack.org&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;In order to serve out SSL services from an OpenStack instance, you
+will generally want one local ip address for each SSL virtual host you
+support.  It is possible to create an instance with multiple fixed
+addresses, but there are a few complications to watch out for.&lt;/p&gt;
+&lt;h1&gt;Assumptions&lt;/h1&gt;
+&lt;p&gt;This article assumes that the following resources exist:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;a private network &lt;code&gt;net0&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;a private network &lt;code&gt;net0-subnet0&lt;/code&gt;, associated with &lt;code&gt;net0&lt;/code&gt;, assigned
+  the range &lt;code&gt;10.0.0.0/24&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;a public network &lt;code&gt;external&lt;/code&gt; assigned the range &lt;code&gt;192.168.200.0/24&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;an image named &lt;code&gt;fedora-20-x86_64&lt;/code&gt;, with hopefully self-evident
+  contents.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1&gt;Creating a port&lt;/h1&gt;
+&lt;p&gt;Start by creating a port in Neutron:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;port&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;net0&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;fixed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;subnet_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;subnet0&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;fixed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;subnet_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;subnet0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This will create a neutron port to which have been allocated to fixed
+ip addresses from &lt;code&gt;net0-subnet0&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;+-----------------------+----------------------------------------------------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Field&lt;/span&gt;                 &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt;                                                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+-----------------------+----------------------------------------------------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;admin_state_up&lt;/span&gt;        &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;True&lt;/span&gt;                                                                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;allowed_address_pairs&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;                                                                                  &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;binding&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;vnic_type&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;normal&lt;/span&gt;                                                                           &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;device_id&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt;                                                                                  &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;device_owner&lt;/span&gt;          &lt;span class="o"&gt;|&lt;/span&gt;                                                                                  &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;fixed_ips&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;subnet_id&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;f8ca90fd-cb82-4218-9627-6fa66e4c9c3c&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;ip_address&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;10.0.0.18&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;                       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;subnet_id&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;f8ca90fd-cb82-4218-9627-6fa66e4c9c3c&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;ip_address&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;10.0.0.19&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;                    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;c564dd5&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fd45&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;4f&lt;/span&gt;&lt;span class="mi"&gt;61&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;88&lt;/span&gt;&lt;span class="n"&gt;df&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;715f&lt;/span&gt;&lt;span class="mi"&gt;71667&lt;/span&gt;&lt;span class="n"&gt;b3b&lt;/span&gt;                                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;mac_address&lt;/span&gt;           &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;fa&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;16&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;e1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;15&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mf"&gt;7f&lt;/span&gt;                                                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;                  &lt;span class="o"&gt;|&lt;/span&gt;                                                                                  &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;network_id&lt;/span&gt;            &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;bb4e5e37&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;74e1&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;41&lt;/span&gt;&lt;span class="n"&gt;bd&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;880&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b59e94236c5e&lt;/span&gt;                                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;security_groups&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;52f&lt;/span&gt;&lt;span class="mi"&gt;7&lt;/span&gt;&lt;span class="n"&gt;a87c&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;380f&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;a07&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;a6ff&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;d64be495f25b&lt;/span&gt;                                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;                &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;DOWN&lt;/span&gt;                                                                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;tenant_id&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;dfe8e38f68449b6a0c9cd73037726f7&lt;/span&gt;                                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+-----------------------+----------------------------------------------------------------------------------+&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If you want, you can specify an explicit set of addresses rather than
+having neutron allocate them for you:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;port&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;net0&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;fixed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;subnet_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;subnet0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ip_address&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;10.0.0.18&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;fixed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;subnet_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;subnet0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ip_address&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;10.0.0.19&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h1&gt;Boot an instance&lt;/h1&gt;
+&lt;p&gt;You can boot an instance using this port using the &lt;code&gt;port-id=...&lt;/code&gt;
+parameter to the &lt;code&gt;--nic&lt;/code&gt; option:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;nova&lt;/span&gt; &lt;span class="n"&gt;boot&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;nic&lt;/span&gt; &lt;span class="n"&gt;port&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;c564dd5&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fd45&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;4f&lt;/span&gt;&lt;span class="mi"&gt;61&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;88&lt;/span&gt;&lt;span class="n"&gt;df&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;715f&lt;/span&gt;&lt;span class="mi"&gt;71667&lt;/span&gt;&lt;span class="n"&gt;b3b&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;flavor&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tiny&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;image&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x86_64&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; &lt;span class="n"&gt;test0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This is where the first complication arises: the instance will boot
+and receive a DHCP lease for one of the fixed addresses you created,
+but you don't know which one.  This isn't an insurmountable problem;
+you can assign floating ips to each one and then try logging in to
+both and see which works.&lt;/p&gt;
+&lt;p&gt;Rather than playing network roulette, you can pass in a script via the
+&lt;code&gt;--user-data&lt;/code&gt; option that will take care of configuring the network
+correctly.  For example, something like this:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt; 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+cat &amp;gt; /etc/sysconfig/network-scripts/ifcfg-eth0 &lt;span class="s"&gt;&amp;lt;&amp;lt;EOF&lt;/span&gt;
+&lt;span class="s"&gt;DEVICE=eth0&lt;/span&gt;
+&lt;span class="s"&gt;BOOTPROTO=none&lt;/span&gt;
+&lt;span class="s"&gt;IPADDR=10.0.0.18&lt;/span&gt;
+&lt;span class="s"&gt;NETMASK=255.255.255.0&lt;/span&gt;
+&lt;span class="s"&gt;GATEWAY=10.0.0.1&lt;/span&gt;
+&lt;span class="s"&gt;ONBOOT=yes&lt;/span&gt;
+&lt;span class="s"&gt;EOF&lt;/span&gt;
+
+cat &amp;gt; /etc/sysconfig/network-scripts/ifcfg-eth0:0 &lt;span class="s"&gt;&amp;lt;&amp;lt;EOF&lt;/span&gt;
+&lt;span class="s"&gt;DEVICE=eth0:0&lt;/span&gt;
+&lt;span class="s"&gt;BOOTPROTO=none&lt;/span&gt;
+&lt;span class="s"&gt;IPADDR=10.0.0.19&lt;/span&gt;
+&lt;span class="s"&gt;NETMASK=255.255.255.0&lt;/span&gt;
+&lt;span class="s"&gt;GATEWAY=10.0.0.1&lt;/span&gt;
+&lt;span class="s"&gt;ONBOOT=yes&lt;/span&gt;
+&lt;span class="s"&gt;EOF&lt;/span&gt;
+
+ifdown eth0
+ifup eth0
+ifup eth0:0
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;And boot the instance like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;nova&lt;/span&gt; &lt;span class="n"&gt;boot&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;nic&lt;/span&gt; &lt;span class="n"&gt;port&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;c564dd5&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fd45&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;4f&lt;/span&gt;&lt;span class="mi"&gt;61&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;88&lt;/span&gt;&lt;span class="n"&gt;df&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;715f&lt;/span&gt;&lt;span class="mi"&gt;71667&lt;/span&gt;&lt;span class="n"&gt;b3b&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;flavor&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tiny&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;image&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x86_64&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;user&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="n"&gt;userdata&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;txt&lt;/span&gt; &lt;span class="n"&gt;test0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Assuming that your image uses &lt;a href="http://cloudinit.readthedocs.org/en/latest/"&gt;cloud-init&lt;/a&gt; or something similar, it
+should execute the &lt;code&gt;user-data&lt;/code&gt; script at boot and set up the
+persistent network configuration.&lt;/p&gt;
+&lt;p&gt;At this stage, you can verify that both addresses have been assigned
+by using the &lt;code&gt;ip netns&lt;/code&gt; command to run &lt;code&gt;ping&lt;/code&gt; inside an appropriate
+namespace.  Something like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;sudo&lt;/span&gt; &lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;netns&lt;/span&gt; &lt;span class="n"&gt;exec&lt;/span&gt; &lt;span class="n"&gt;qdhcp&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;bb4e5e37&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;74e1&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;41&lt;/span&gt;&lt;span class="n"&gt;bd&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;880&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b59e94236c5e&lt;/span&gt; &lt;span class="n"&gt;ping&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c1&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.18&lt;/span&gt;
+&lt;span class="n"&gt;PING&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.18&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mf"&gt;10.0.0.18&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mi"&gt;56&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;84&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;bytes&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="mi"&gt;64&lt;/span&gt; &lt;span class="n"&gt;bytes&lt;/span&gt; &lt;span class="n"&gt;from&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.18&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;icmp_seq&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;ttl&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;64&lt;/span&gt; &lt;span class="n"&gt;time&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;1.60&lt;/span&gt; &lt;span class="n"&gt;ms&lt;/span&gt;
+
+&lt;span class="o"&gt;---&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.18&lt;/span&gt; &lt;span class="n"&gt;ping&lt;/span&gt; &lt;span class="n"&gt;statistics&lt;/span&gt; &lt;span class="o"&gt;---&lt;/span&gt;
+&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;packets&lt;/span&gt; &lt;span class="n"&gt;transmitted&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;received&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="n"&gt;packet&lt;/span&gt; &lt;span class="n"&gt;loss&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;time&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="n"&gt;ms&lt;/span&gt;
+&lt;span class="n"&gt;rtt&lt;/span&gt; &lt;span class="n"&gt;min&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;avg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;max&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;mdev&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mf"&gt;1.606&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;1.606&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;1.606&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;0.000&lt;/span&gt; &lt;span class="n"&gt;ms&lt;/span&gt;
+
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;sudo&lt;/span&gt; &lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;netns&lt;/span&gt; &lt;span class="n"&gt;exec&lt;/span&gt; &lt;span class="n"&gt;qdhcp&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;bb4e5e37&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;74e1&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;41&lt;/span&gt;&lt;span class="n"&gt;bd&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;880&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b59e94236c5e&lt;/span&gt; &lt;span class="n"&gt;ping&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c1&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.19&lt;/span&gt;
+&lt;span class="n"&gt;PING&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.19&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mf"&gt;10.0.0.19&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mi"&gt;56&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;84&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;bytes&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="mi"&gt;64&lt;/span&gt; &lt;span class="n"&gt;bytes&lt;/span&gt; &lt;span class="n"&gt;from&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.19&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;icmp_seq&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;ttl&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;64&lt;/span&gt; &lt;span class="n"&gt;time&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;1.60&lt;/span&gt; &lt;span class="n"&gt;ms&lt;/span&gt;
+
+&lt;span class="o"&gt;---&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.19&lt;/span&gt; &lt;span class="n"&gt;ping&lt;/span&gt; &lt;span class="n"&gt;statistics&lt;/span&gt; &lt;span class="o"&gt;---&lt;/span&gt;
+&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;packets&lt;/span&gt; &lt;span class="n"&gt;transmitted&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;received&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="n"&gt;packet&lt;/span&gt; &lt;span class="n"&gt;loss&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;time&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="n"&gt;ms&lt;/span&gt;
+&lt;span class="n"&gt;rtt&lt;/span&gt; &lt;span class="n"&gt;min&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;avg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;max&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;mdev&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mf"&gt;1.701&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;1.701&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;1.701&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;0.000&lt;/span&gt; &lt;span class="n"&gt;ms&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This assumes that the UUID of the &lt;code&gt;net0&lt;/code&gt; network is &lt;code&gt;bb4e5e37-74e1-41bd-880e-b59e94236c5e&lt;/code&gt;.  On your system, the namespace will be something different.&lt;/p&gt;
+&lt;h1&gt;Assign floating ips&lt;/h1&gt;
+&lt;p&gt;Assign a floating ip address to each of the fixed addresses.  You will
+need to use the &lt;code&gt;--fixed-address&lt;/code&gt; option to &lt;code&gt;nova add-floating-ip&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;nova&lt;/span&gt; &lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;floating&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;fixed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;address&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.19&lt;/span&gt; &lt;span class="n"&gt;test0&lt;/span&gt; &lt;span class="mf"&gt;192.168.200.6&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;nova&lt;/span&gt; &lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;floating&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;fixed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;address&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.18&lt;/span&gt; &lt;span class="n"&gt;test0&lt;/span&gt; &lt;span class="mf"&gt;192.168.200.4&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With these changes in place, the system is accessible via either
+address:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ssh&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="mf"&gt;192.168.200.4&lt;/span&gt; &lt;span class="n"&gt;uptime&lt;/span&gt;
+  &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;51&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;52&lt;/span&gt; &lt;span class="n"&gt;up&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt; &lt;span class="n"&gt;min&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;users&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="n"&gt;load&lt;/span&gt; &lt;span class="n"&gt;average&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mf"&gt;0.00&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mf"&gt;0.02&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mf"&gt;0.02&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ssh&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="mf"&gt;192.168.200.6&lt;/span&gt; &lt;span class="n"&gt;uptime&lt;/span&gt;
+  &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;51&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;54&lt;/span&gt; &lt;span class="n"&gt;up&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt; &lt;span class="n"&gt;min&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;users&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="n"&gt;load&lt;/span&gt; &lt;span class="n"&gt;average&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mf"&gt;0.00&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mf"&gt;0.02&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mf"&gt;0.02&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And looking at the network configuration on the system, we can see
+that both addresses have been assigned to &lt;code&gt;eth0&lt;/code&gt; as expected:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ssh&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="mf"&gt;192.168.200.4&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;sbin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt;
+&lt;span class="p"&gt;[...]&lt;/span&gt;
+&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;eth0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;BROADCAST&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;MULTICAST&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;UP&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;LOWER_UP&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;mtu&lt;/span&gt; &lt;span class="mi"&gt;1500&lt;/span&gt; &lt;span class="n"&gt;qdisc&lt;/span&gt; &lt;span class="n"&gt;pfifo_fast&lt;/span&gt; &lt;span class="n"&gt;state&lt;/span&gt; &lt;span class="n"&gt;UP&lt;/span&gt; &lt;span class="n"&gt;group&lt;/span&gt; &lt;span class="k"&gt;default&lt;/span&gt; &lt;span class="n"&gt;qlen&lt;/span&gt; &lt;span class="mi"&gt;1000&lt;/span&gt;
+    &lt;span class="n"&gt;link&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ether&lt;/span&gt; &lt;span class="n"&gt;fa&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;16&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;bf&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;f9&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;6&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="n"&gt;brd&lt;/span&gt; &lt;span class="n"&gt;ff&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ff&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ff&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ff&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ff&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ff&lt;/span&gt;
+    &lt;span class="n"&gt;inet&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.18&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt; &lt;span class="n"&gt;brd&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.255&lt;/span&gt; &lt;span class="n"&gt;scope&lt;/span&gt; &lt;span class="n"&gt;global&lt;/span&gt; &lt;span class="n"&gt;eth0&lt;/span&gt;
+       &lt;span class="n"&gt;valid_lft&lt;/span&gt; &lt;span class="n"&gt;forever&lt;/span&gt; &lt;span class="n"&gt;preferred_lft&lt;/span&gt; &lt;span class="n"&gt;forever&lt;/span&gt;
+    &lt;span class="n"&gt;inet&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.19&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt; &lt;span class="n"&gt;brd&lt;/span&gt; &lt;span class="mf"&gt;10.0.0.255&lt;/span&gt; &lt;span class="n"&gt;scope&lt;/span&gt; &lt;span class="n"&gt;global&lt;/span&gt; &lt;span class="n"&gt;secondary&lt;/span&gt; &lt;span class="n"&gt;eth0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;
+       &lt;span class="n"&gt;valid_lft&lt;/span&gt; &lt;span class="n"&gt;forever&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;</summary><category term="openstack"></category><category term="neutron"></category><category term="networking"></category></entry><entry><title>Multiple external networks with a single L3 agent</title><link href="http://blog-beta.oddbit.com/2014/05/28/multiple-external-networks-wit/" rel="alternate"></link><updated>2014-05-28T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-05-28:2014/05/28/multiple-external-networks-wit/</id><summary type="html">&lt;p&gt;In the old days (so, like, last year), Neutron supported a single
+external network per L3 agent.  You would run something like this...&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;external&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;router&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;external&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;disable&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dhcp&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;...and neutron would map this to the bridge defined in
+&lt;code&gt;external_network_bridge&lt;/code&gt; in &lt;code&gt;/etc/neutron/l3_agent.ini&lt;/code&gt;.  If you
+wanted to support more than a single external network, you would need
+to run multiple L3 agents, each with a unique value for
+&lt;code&gt;external_network_bridge&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;There is now a better option available.&lt;/p&gt;
+&lt;h2&gt;Assumptions&lt;/h2&gt;
+&lt;p&gt;In this post, I'm assuming:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;You're using the ML2 plugin for Neutron.&lt;/li&gt;
+&lt;li&gt;You're using the Open vSwitch mechanism driver for the ML2 plugin&lt;/li&gt;
+&lt;li&gt;You have &lt;code&gt;eth1&lt;/code&gt; and &lt;code&gt;eth2&lt;/code&gt; connected directly to networks that you
+  would like to make available as external networks in OpenStack.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Create your bridges&lt;/h2&gt;
+&lt;p&gt;For each external network you wish to support, create a new OVS
+bridge.  For example, assuming that we want to make a network attached
+to &lt;code&gt;eth1&lt;/code&gt; and a network attached to &lt;code&gt;eth2&lt;/code&gt; available to tenants:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# ovs-vsctl add-br br-eth1&lt;/span&gt;
+&lt;span class="c"&gt;# ovs-vsctl add-port br-eth1 eth1&lt;/span&gt;
+&lt;span class="c"&gt;# ovs-vsctl add-br br-eth2&lt;/span&gt;
+&lt;span class="c"&gt;# ovs-vsctl add-port br-eth2 eth2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Realistically, you would accomplish this via your system's native
+network configuration mechanism, but I'm going to gloss over that
+detail for now.&lt;/p&gt;
+&lt;h2&gt;Configure the L3 Agent&lt;/h2&gt;
+&lt;p&gt;Start with the following comment in &lt;code&gt;l3_agent.ini&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# When external_network_bridge is set, each L3 agent can be associated&lt;/span&gt;
+&lt;span class="c"&gt;# with no more than one external network. This value should be set to the UUID&lt;/span&gt;
+&lt;span class="c"&gt;# of that external network. To allow L3 agent support multiple external&lt;/span&gt;
+&lt;span class="c"&gt;# networks, both the external_network_bridge and gateway_external_network_id&lt;/span&gt;
+&lt;span class="c"&gt;# must be left empty.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Following those instructions, make sure that both
+&lt;code&gt;external_network_bridge&lt;/code&gt; and &lt;code&gt;gateway_external_network_id&lt;/code&gt; are unset
+in &lt;code&gt;l3_agent.ini&lt;/code&gt;.&lt;/p&gt;
+&lt;h2&gt;Configure the ML2 Plugin&lt;/h2&gt;
+&lt;p&gt;We are creating "flat" networks in this example, so we need to make
+sure that we can create flat networks.  Make sure that the
+&lt;code&gt;type_drivers&lt;/code&gt; parameter of the &lt;code&gt;[ml2]&lt;/code&gt; section of your plugin
+configuration includes &lt;code&gt;flat&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ml2]&lt;/span&gt;
+&lt;span class="na"&gt;type_drivers&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;local,flat,gre,vxlan&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In the &lt;code&gt;[ml2_type_flat]&lt;/code&gt; section, need to create a list of physical
+network names that can be used to create flat networks.  If you want
+all physical networks to be available for flat networks, you can use
+&lt;code&gt;*&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ml2_type_flat]&lt;/span&gt;
+&lt;span class="na"&gt;flat_networks&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;*&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Both of these changes probably go in &lt;code&gt;/etc/neutron/plugin.ini&lt;/code&gt;, but
+&lt;em&gt;may&lt;/em&gt; going elsewhere depending on how your system is configured.&lt;/p&gt;
+&lt;h2&gt;Configure the Open vSwitch Agent&lt;/h2&gt;
+&lt;p&gt;For each bridge, you will need to add entries to both the
+&lt;code&gt;network_vlan_ranges&lt;/code&gt; and &lt;code&gt;bridge_mappings&lt;/code&gt; parameters of the &lt;code&gt;[ovs]&lt;/code&gt;
+section of your plugin configuration.  For the purposes of this post,
+that means:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ovs]&lt;/span&gt;
+&lt;span class="na"&gt;network_vlan_ranges&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;physnet1,physnet2&lt;/span&gt;
+&lt;span class="na"&gt;bridge_mappings&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;physnet1:br-eth1,physnet2:br-eth2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This will probably go in &lt;code&gt;/etc/neutron/plugin.ini&lt;/code&gt;.  Specifically, it
+needs to go wherever your &lt;code&gt;neutron-openvswitch-agent&lt;/code&gt; process is
+looking for configuration information.  So you if you see this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ps&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fe&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;grep&lt;/span&gt; &lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt;
+&lt;span class="n"&gt;neutron&lt;/span&gt;  &lt;span class="mi"&gt;12529&lt;/span&gt;     &lt;span class="mi"&gt;1&lt;/span&gt;  &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="mi"&gt;09&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;50&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;        &lt;span class="mo"&gt;00&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;08&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;python&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;share&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dist&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;plugins&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ovs_neutron_plugin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ini&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;...then you would make the changes to &lt;code&gt;/etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini&lt;/code&gt;.&lt;/p&gt;
+&lt;h2&gt;Restart Neutron&lt;/h2&gt;
+&lt;p&gt;You will need to restart both the l3 agent and the openvswitch agent.
+If you're on a recent Fedora/RHEL/CentOS, you can restart all Neutron
+services like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# openstack-service restart neutron&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Inspect your Open vSwitch Configuration&lt;/h2&gt;
+&lt;p&gt;As root, run &lt;code&gt;ovs-vsctl show&lt;/code&gt;.  You should see something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;f4a4312b&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;307e-4&lt;/span&gt;&lt;span class="n"&gt;c3c&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b728&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;9434000&lt;/span&gt;&lt;span class="n"&gt;a34ff&lt;/span&gt;
+    &lt;span class="n"&gt;Bridge&lt;/span&gt; &lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="kt"&gt;int&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="kt"&gt;int&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="kt"&gt;int&lt;/span&gt;
+                &lt;span class="nl"&gt;type:&lt;/span&gt; &lt;span class="n"&gt;internal&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;int-br-eth2&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;int-br-eth2&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="kt"&gt;int&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ex&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="kt"&gt;int&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ex&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;int-br-eth1&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;int-br-eth1&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;Bridge&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;br-eth2&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;br-eth2&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;br-eth2&amp;quot;&lt;/span&gt;
+                &lt;span class="nl"&gt;type:&lt;/span&gt; &lt;span class="n"&gt;internal&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;phy-br-eth2&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;phy-br-eth2&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;eth2&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;eth2&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;Bridge&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;br-eth1&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;br-eth1&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;br-eth1&amp;quot;&lt;/span&gt;
+                &lt;span class="nl"&gt;type:&lt;/span&gt; &lt;span class="n"&gt;internal&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;phy-br-eth1&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;phy-br-eth1&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;Port&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;eth1&amp;quot;&lt;/span&gt;
+            &lt;span class="n"&gt;Interface&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;eth1&amp;quot;&lt;/span&gt;
+    &lt;span class="nl"&gt;ovs_version:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;2.0.1&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Here you can see the OVS bridge &lt;code&gt;br-eth1&lt;/code&gt; and &lt;code&gt;br-eth2&lt;/code&gt;, each with the
+appropriate associated physical interface and links to the integration
+bridge, &lt;code&gt;br-int&lt;/code&gt;.&lt;/p&gt;
+&lt;h2&gt;Create your external networks&lt;/h2&gt;
+&lt;p&gt;With admin credentials, use the &lt;code&gt;net-create&lt;/code&gt; and &lt;code&gt;subnet-create&lt;/code&gt;
+commands to create the appropiate networks:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;external1&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;router&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;external&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;network_type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;flat&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;physical_network&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;physnet1&lt;/span&gt;
+&lt;span class="o"&gt;+---------------------------+--------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Field&lt;/span&gt;                     &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt;                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+---------------------------+--------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;admin_state_up&lt;/span&gt;            &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;True&lt;/span&gt;                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;                        &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;23f&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;b5f6&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;14f&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;bab&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;a8b0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;445257&lt;/span&gt;&lt;span class="n"&gt;bbc0d1&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;                      &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;external1&lt;/span&gt;                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;network_type&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;flat&lt;/span&gt;                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;physical_network&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;physnet1&lt;/span&gt;                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;segmentation_id&lt;/span&gt;  &lt;span class="o"&gt;|&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;router&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;external&lt;/span&gt;           &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;True&lt;/span&gt;                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;shared&lt;/span&gt;                    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;False&lt;/span&gt;                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;                    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;ACTIVE&lt;/span&gt;                               &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;subnets&lt;/span&gt;                   &lt;span class="o"&gt;|&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;tenant_id&lt;/span&gt;                 &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;6f&lt;/span&gt;&lt;span class="mi"&gt;736&lt;/span&gt;&lt;span class="n"&gt;b1361b74789a81d4d53d88be3c5&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+---------------------------+--------------------------------------+&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;subnet&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;disable&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dhcp&lt;/span&gt; &lt;span class="n"&gt;external1&lt;/span&gt; &lt;span class="mf"&gt;10.1.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt;
+&lt;span class="o"&gt;+------------------+--------------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Field&lt;/span&gt;            &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+------------------+--------------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;allocation_pools&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;start&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;10.1.0.2&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;end&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;10.1.0.254&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;cidr&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;10.1.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt;                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;dns_nameservers&lt;/span&gt;  &lt;span class="o"&gt;|&lt;/span&gt;                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;enable_dhcp&lt;/span&gt;      &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;False&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;gateway_ip&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;10.1.0.1&lt;/span&gt;                                   &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;host_routes&lt;/span&gt;      &lt;span class="o"&gt;|&lt;/span&gt;                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;               &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;363&lt;/span&gt;&lt;span class="n"&gt;ba289&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;a989&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;acb&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ac3b&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ffaeb90796fc&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;ip_version&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;                                          &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt;                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;network_id&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;23f&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;b5f6&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;14f&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;bab&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;a8b0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;445257&lt;/span&gt;&lt;span class="n"&gt;bbc0d1&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;tenant_id&lt;/span&gt;        &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;6f&lt;/span&gt;&lt;span class="mi"&gt;736&lt;/span&gt;&lt;span class="n"&gt;b1361b74789a81d4d53d88be3c5&lt;/span&gt;           &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+------------------+--------------------------------------------+&lt;/span&gt;
+
+
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;external2&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;router&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;external&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;network_type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;flat&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;physical_network&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;physnet2&lt;/span&gt;
+&lt;span class="o"&gt;+---------------------------+--------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Field&lt;/span&gt;                     &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt;                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+---------------------------+--------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;admin_state_up&lt;/span&gt;            &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;True&lt;/span&gt;                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;                        &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;762&lt;/span&gt;&lt;span class="n"&gt;be5de&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;31&lt;/span&gt;&lt;span class="n"&gt;a2&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;46&lt;/span&gt;&lt;span class="n"&gt;b8&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;925&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;0967871f&lt;/span&gt;&lt;span class="mi"&gt;8181&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;                      &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;external2&lt;/span&gt;                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;network_type&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;flat&lt;/span&gt;                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;physical_network&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;physnet2&lt;/span&gt;                             &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;segmentation_id&lt;/span&gt;  &lt;span class="o"&gt;|&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;router&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;external&lt;/span&gt;           &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;True&lt;/span&gt;                                 &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;shared&lt;/span&gt;                    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;False&lt;/span&gt;                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;                    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;ACTIVE&lt;/span&gt;                               &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;subnets&lt;/span&gt;                   &lt;span class="o"&gt;|&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;tenant_id&lt;/span&gt;                 &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;6f&lt;/span&gt;&lt;span class="mi"&gt;736&lt;/span&gt;&lt;span class="n"&gt;b1361b74789a81d4d53d88be3c5&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+---------------------------+--------------------------------------+&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;subnet&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;disable&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dhcp&lt;/span&gt; &lt;span class="n"&gt;external2&lt;/span&gt; &lt;span class="mf"&gt;10.2.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt;
+&lt;span class="o"&gt;+------------------+--------------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Field&lt;/span&gt;            &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+------------------+--------------------------------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;allocation_pools&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;start&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;10.2.0.2&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;end&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;10.2.0.254&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;cidr&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;10.2.0.0&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt;                                &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;dns_nameservers&lt;/span&gt;  &lt;span class="o"&gt;|&lt;/span&gt;                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;enable_dhcp&lt;/span&gt;      &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;False&lt;/span&gt;                                      &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;gateway_ip&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;10.2.0.1&lt;/span&gt;                                   &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;host_routes&lt;/span&gt;      &lt;span class="o"&gt;|&lt;/span&gt;                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;               &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;edffc5c6&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;0e16&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;da0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;8&lt;/span&gt;&lt;span class="n"&gt;eba&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;d79ab9fd2fe&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;ip_version&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;                                          &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;             &lt;span class="o"&gt;|&lt;/span&gt;                                            &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;network_id&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;762&lt;/span&gt;&lt;span class="n"&gt;be5de&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;31&lt;/span&gt;&lt;span class="n"&gt;a2&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;46&lt;/span&gt;&lt;span class="n"&gt;b8&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;925&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;0967871f&lt;/span&gt;&lt;span class="mi"&gt;8181&lt;/span&gt;       &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;tenant_id&lt;/span&gt;        &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;6f&lt;/span&gt;&lt;span class="mi"&gt;736&lt;/span&gt;&lt;span class="n"&gt;b1361b74789a81d4d53d88be3c5&lt;/span&gt;           &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+------------------+--------------------------------------------+&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This assumes that &lt;code&gt;eth1&lt;/code&gt; is connected to a network using
+&lt;code&gt;10.1.0.0/24&lt;/code&gt; and &lt;code&gt;eth2&lt;/code&gt; is connected to a network using
+&lt;code&gt;10.2.0.0/24&lt;/code&gt;, and that each network has a gateway sitting at the
+corresponding &lt;code&gt;.1&lt;/code&gt; address.&lt;/p&gt;
+&lt;p&gt;And you're all set!&lt;/p&gt;</summary><category term="openstack"></category><category term="neutron"></category><category term="networking"></category></entry><entry><title>Flat networks with ML2 and OpenVSwitch</title><link href="http://blog-beta.oddbit.com/2014/05/19/flat-networks-with-ml-and-open/" rel="alternate"></link><updated>2014-05-19T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-05-19:2014/05/19/flat-networks-with-ml-and-open/</id><summary type="html">&lt;p&gt;Due to an unfortunate incident involving sleep mode and an overheated
+backpack I had the "opportunity" to rebuild my laptop.  Since this meant
+reinstalling OpenStack I used this as an excuse to finally move to the ML2
+network plugin for Neutron.&lt;/p&gt;
+&lt;p&gt;I was attempting to add an external network using the normal incantation:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;neutron&lt;/span&gt; &lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="n"&gt;external&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;router&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;external&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt; \
+    &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;network_type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;flat&lt;/span&gt; \
+    &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;provider&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;physical_network&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;physnet1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While this command completed successfully, I was left without any
+connectivity between &lt;code&gt;br-int&lt;/code&gt; and &lt;code&gt;br-ex&lt;/code&gt;, despite having in my
+&lt;code&gt;/etc/neutron/plugins/ml2/ml2_conf.ini&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ml2_type_flat]&lt;/span&gt;
+&lt;span class="na"&gt;flat_networks&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;*&lt;/span&gt;
+
+&lt;span class="k"&gt;[ovs]&lt;/span&gt;
+&lt;span class="na"&gt;network_vlan_ranges&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;physnet1&lt;/span&gt;
+&lt;span class="na"&gt;bridge_mappings&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;physnet1:br-ex&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The reason this is failing is very simple, but not terribly clear from
+the existing documentation.  This is how the &lt;code&gt;neutron-server&lt;/code&gt; process
+is running:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;python&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;server&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;share&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dist&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;plugin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ini&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;server&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This is how the &lt;code&gt;neutron-openvswitch-agent&lt;/code&gt; process is running:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;python&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;share&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dist&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;plugins&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ovs_neutron_plugin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ini&lt;/span&gt; \
+  &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;neutron&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openvswitch&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;agent&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;log&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Note in particular that &lt;code&gt;neutron-server&lt;/code&gt; is looking at
+&lt;code&gt;/etc/neutron/plugin.ini&lt;/code&gt;, which is a symlink to
+&lt;code&gt;/etc/neutron/plugins/ml2/ml2_conf.ini&lt;/code&gt;, while
+&lt;code&gt;neutron-openvswitch-agent&lt;/code&gt; is looking explicitly at 
+&lt;code&gt;/etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini&lt;/code&gt;.  The
+physical network configuration needs to go into the
+&lt;code&gt;ovs_neutron_plugin.ini&lt;/code&gt; configuration file.&lt;/p&gt;</summary><category term="openvswitch"></category><category term="openstack"></category><category term="neutron"></category></entry><entry><title>Visualizing Neutron Networking with GraphViz</title><link href="http://blog-beta.oddbit.com/2013/12/23/visualizing-network-with-graphviz/" rel="alternate"></link><updated>2013-12-23T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-12-23:2013/12/23/visualizing-network-with-graphviz/</id><summary type="html">&lt;p&gt;I've put together a few tools to help gather information about your
+Neutron and network configuration and visualize it in different ways.
+All of these tools are available as part of my &lt;a href="http://github.com/larsks/neutron-diag/"&gt;neutron-diag&lt;/a&gt;
+repository on GitHub.&lt;/p&gt;
+&lt;p&gt;In this post I'm going to look at a tool that will help you visualize
+the connectivity of network devices on your system.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;h2&gt;mk-network-dot&lt;/h2&gt;
+&lt;p&gt;There are a lot of devices involved in your Neutron network
+configuration.  Information originating in one of your instances has
+two traverse &lt;em&gt;at least&lt;/em&gt; seven network devices before seeing the light
+of day.  Understanding how everything connects is critical if you're
+trying to debug problems in your envionment.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;mk-network-dot&lt;/code&gt; tool interrogates your system for information
+about network devices and generates &lt;a href="http://en.wikipedia.org/wiki/DOT_%28graph_description_language%29"&gt;dot format&lt;/a&gt; output showing how
+everything connects.  You can use &lt;a href="http://www.graphviz.org/"&gt;GraphViz&lt;/a&gt; to render this into a
+variety of output formats.  The script must be run as &lt;code&gt;root&lt;/code&gt;, so I
+usually do something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;sudo&lt;/span&gt; &lt;span class="n"&gt;sh&lt;/span&gt; &lt;span class="n"&gt;mk&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;network&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dot&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;dot&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;Tsvg&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;svg&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The &lt;em&gt;dot&lt;/em&gt; language is a language designed for describing graphs, and
+the syntax looks something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;digraph&lt;/span&gt; &lt;span class="n"&gt;example&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;B&lt;/span&gt;
+  &lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;C&lt;/span&gt;
+  &lt;span class="n"&gt;C&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;D&lt;/span&gt;
+  &lt;span class="n"&gt;B&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;D&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Which would produce output like this:&lt;/p&gt;
+&lt;p&gt;&lt;img alt="Dot output example" src="/assets/dot-example-2013-12-23.svg" /&gt;&lt;/p&gt;
+&lt;p&gt;When run on my laptop, with a simple all-in-one configuration and five
+instances across two networks, the result of running &lt;code&gt;mk-network-dot&lt;/code&gt;
+looks like this:&lt;/p&gt;
+&lt;p&gt;&lt;a href="/assets/network-2013-12-23.svg"&gt;&lt;img
+src="/assets/network-2013-12-23.svg" width="400"&gt;&lt;/img&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;There are a few caveats with this tool:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;As of this writing, it doesn't know about either bond interfaces or
+  VLAN interfaces.&lt;/li&gt;
+&lt;li&gt;It's had only limited testing.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;If you try this out and something doesn't work as you expect, please
+open a new issues on the &lt;a href="https://github.com/larsks/neutron-diag/issues"&gt;GitHub issues page&lt;/a&gt;.&lt;/p&gt;</summary><category term="openstack"></category><category term="neutron"></category><category term="networking"></category></entry><entry><title>An introduction to OpenStack Heat</title><link href="http://blog-beta.oddbit.com/2013/12/06/an-introduction-to-openstack-heat/" rel="alternate"></link><updated>2013-12-06T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-12-06:2013/12/06/an-introduction-to-openstack-heat/</id><summary type="html">&lt;p&gt;&lt;a href="https://wiki.openstack.org/wiki/Heat"&gt;Heat&lt;/a&gt; is a template-based orchestration mechanism for use with
+OpenStack.  With Heat, you can deploy collections of resources --
+networks, servers, storage, and more -- all from a single,
+parameterized template.&lt;/p&gt;
+&lt;p&gt;In this article I will introduce Heat templates and the &lt;code&gt;heat&lt;/code&gt; command
+line client.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;h2&gt;Writing templates&lt;/h2&gt;
+&lt;p&gt;Because Heat began life as an analog of AWS &lt;a href="http://aws.amazon.com/cloudformation/"&gt;CloudFormation&lt;/a&gt;, it
+supports the template formats used by the CloudFormation (CFN) tools.
+It also supports its own native template format, called HOT ("Heat
+Orchestration Templates").  In this article I will be using the HOT
+template syntax, which is fully specified on &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html"&gt;the OpenStack
+website&lt;/a&gt;.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;NB: Heat is under active development, and there are a variety of
+discussions going on right now regarding the HOT specification.  I
+will try to keep this post up-to-date as the spec evolves.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;A HOT template is written using &lt;a href="http://en.wikipedia.org/wiki/YAML"&gt;YAML&lt;/a&gt; syntax and has three major
+sections:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;parameters&lt;/em&gt; -- these are input parameters that you provide when you
+  deploy from the template.&lt;/li&gt;
+&lt;li&gt;&lt;em&gt;resources&lt;/em&gt; -- these are things created by the template.&lt;/li&gt;
+&lt;li&gt;&lt;em&gt;outputs&lt;/em&gt; -- these are output parameters generated by Heat and
+  available to you via the API.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Parameters&lt;/h3&gt;
+&lt;p&gt;The &lt;code&gt;parameters&lt;/code&gt; section defines the list of available parameters.
+For each parameter, you define a data type, an optional default value
+(that will be used if you do not otherwise specify a value for the
+parameter), an optional description, constraints to validate the data,
+and so forth.  The definition from &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html"&gt;the spec&lt;/a&gt; looks like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nl"&gt;parameters:&lt;/span&gt;
+  &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;param&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;:&lt;/span&gt;
+    &lt;span class="nl"&gt;type:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;string&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;number&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;json&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;comma_delimited_list&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nl"&gt;description:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;description&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;parameter&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nl"&gt;default:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="k"&gt;default&lt;/span&gt; &lt;span class="n"&gt;value&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;parameter&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nl"&gt;hidden:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="nb"&gt;false&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nl"&gt;constraints:&lt;/span&gt;
+      &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;parameter&lt;/span&gt; &lt;span class="n"&gt;constraints&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;A simple example might look like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;parameters&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;small&lt;/span&gt;
+    &lt;span class="n"&gt;constraints&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; 
+      &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;allowed_values&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;nano&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;tiny&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;small&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;large&lt;/span&gt;&lt;span class="o"&gt;]&lt;/span&gt;
+        &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt; &lt;span class="n"&gt;must&lt;/span&gt; &lt;span class="n"&gt;be&lt;/span&gt; &lt;span class="n"&gt;one&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;m1.tiny&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;m1.small&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;or&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;m1.large&amp;#39;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This defines one parameter named &lt;code&gt;flavor&lt;/code&gt; with a default value of
+&lt;code&gt;m1.small&lt;/code&gt;.  Any value passed in when you deploy from this template
+must match of one the values in the &lt;code&gt;allowed_values&lt;/code&gt; constraint.&lt;/p&gt;
+&lt;h3&gt;Resources&lt;/h3&gt;
+&lt;p&gt;The &lt;code&gt;resources&lt;/code&gt; section of your template defines the items that will
+be created by Heat when you deploy from your template.  This may
+include storage, networks, ports, routers, security groups, firewall
+rules, or any other of the &lt;a href="http://docs.openstack.org/developer/heat/template_guide/openstack.html"&gt;many available resources&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;The definition of this section from &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html"&gt;the spec&lt;/a&gt; looks like
+this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nl"&gt;resources:&lt;/span&gt;
+  &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;resource&lt;/span&gt; &lt;span class="n"&gt;ID&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;:&lt;/span&gt;
+    &lt;span class="nl"&gt;type:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;resource&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nl"&gt;properties:&lt;/span&gt;
+      &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;property&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;property&lt;/span&gt; &lt;span class="n"&gt;value&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="n"&gt;more&lt;/span&gt; &lt;span class="n"&gt;resource&lt;/span&gt; &lt;span class="n"&gt;specific&lt;/span&gt; &lt;span class="n"&gt;metadata&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Here's a simple example that would create a single server:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;resources&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;instance0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OS&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Nova&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Server&lt;/span&gt;
+    &lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;instance0&lt;/span&gt;
+      &lt;span class="n"&gt;image&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cirros&lt;/span&gt;
+      &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;tiny&lt;/span&gt;
+      &lt;span class="n"&gt;key_name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;mykey&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The complete list of resources and their available properties can be
+found &lt;a href="http://docs.openstack.org/developer/heat/template_guide/openstack.html"&gt;in the documentation&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;You'll notice that the above example is static: it will always result
+in an instance using the &lt;code&gt;cirros&lt;/code&gt; image and the &lt;code&gt;m1.tiny&lt;/code&gt; flavor.
+This isn't terribly useful, so let's redefine this example assuming
+that we have available the &lt;code&gt;parameter&lt;/code&gt; section from the previous
+example:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;resources&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;instance0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OS&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Nova&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Server&lt;/span&gt;
+    &lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;instance0&lt;/span&gt;
+      &lt;span class="n"&gt;image&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cirros&lt;/span&gt;
+      &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;&lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;}&lt;/span&gt;
+      &lt;span class="n"&gt;key_name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;mykey&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Here we are using the &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html#get-param"&gt;get_param&lt;/a&gt; &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html#intrinsic-functions"&gt;intrinsic function&lt;/a&gt; to
+retrieve an insert the value of the &lt;code&gt;flavor&lt;/code&gt; parameter.&lt;/p&gt;
+&lt;h3&gt;Outputs&lt;/h3&gt;
+&lt;p&gt;The &lt;code&gt;outputs&lt;/code&gt; section of your template defines parameters that will be
+available to you (via the API or command line client) after your stack
+has been deployed.  This may include things like this ip addresses
+assigned to your instances.  The &lt;code&gt;outputs&lt;/code&gt; section definition is:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nx"&gt;outputs&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+  &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nx"&gt;parameter&lt;/span&gt; &lt;span class="nb"&gt;name&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="nb"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;description&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="nb"&gt;value&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nx"&gt;parameter&lt;/span&gt; &lt;span class="nb"&gt;value&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In order to make the &lt;code&gt;outputs&lt;/code&gt; section useful, we'll need another
+template function, &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html#get-attr"&gt;get_attr&lt;/a&gt;.  Where &lt;code&gt;get_param&lt;/code&gt; accesses values from
+your &lt;code&gt;parameters&lt;/code&gt; section, &lt;code&gt;get_attr&lt;/code&gt; accesses attributes of your
+resources.  For example:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;outputs&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;instance_ip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;value&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;&lt;span class="n"&gt;get_attr&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="n"&gt;instance0&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;first_address&lt;/span&gt;&lt;span class="o"&gt;]}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You will again want to refer to the &lt;a href="http://docs.openstack.org/developer/heat/template_guide/openstack.html"&gt;list of resource types&lt;/a&gt;
+for a list of available attributes.&lt;/p&gt;
+&lt;h3&gt;Putting it all together&lt;/h3&gt;
+&lt;p&gt;Using the above information, let's put together a slightly more
+complete template.  This example will:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Deploy a single instance&lt;/li&gt;
+&lt;li&gt;Assign it a floating ip address&lt;/li&gt;
+&lt;li&gt;Ensure ssh access via an ssh key published to Nova&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;We'll get the flavor name, image name, key name, and network
+information from user-provided parameters.&lt;/p&gt;
+&lt;p&gt;Since this is a complete example, we need to add the
+&lt;code&gt;heat_template_version&lt;/code&gt; key to our template:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;heat_template_version&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;05&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;23&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And a description provides useful documentation:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nl"&gt;description:&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+  &lt;span class="n"&gt;A&lt;/span&gt; &lt;span class="n"&gt;simple&lt;/span&gt; &lt;span class="n"&gt;HOT&lt;/span&gt; &lt;span class="n"&gt;template&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;demonstrating&lt;/span&gt; &lt;span class="n"&gt;Heat&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We define parameters for the key name, flavor, and image, as well as
+network ids for address provisioning:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;parameters&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;key_name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Name&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;an&lt;/span&gt; &lt;span class="n"&gt;existing&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="n"&gt;pair&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;use&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;instance&lt;/span&gt;
+  &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Instance&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;instance&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;be&lt;/span&gt; &lt;span class="n"&gt;created&lt;/span&gt;
+    &lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;small&lt;/span&gt;
+    &lt;span class="n"&gt;constraints&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;allowed_values&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;nano&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;tiny&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;small&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;large&lt;/span&gt;&lt;span class="o"&gt;]&lt;/span&gt;
+        &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Value&lt;/span&gt; &lt;span class="n"&gt;must&lt;/span&gt; &lt;span class="n"&gt;be&lt;/span&gt; &lt;span class="n"&gt;one&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;m1.tiny&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;m1.small&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;or&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;m1.large&amp;#39;&lt;/span&gt;
+  &lt;span class="n"&gt;image&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="k"&gt;default&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cirros&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ID&lt;/span&gt; &lt;span class="n"&gt;or&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;image&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;use&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;instance&lt;/span&gt;
+  &lt;span class="n"&gt;private_net_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Private&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;
+  &lt;span class="n"&gt;private_subnet_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Private&lt;/span&gt; &lt;span class="n"&gt;subnet&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;
+  &lt;span class="n"&gt;public_net_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;string&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Public&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In the &lt;code&gt;resources&lt;/code&gt; section, we define a single instance of
+&lt;code&gt;OS::Nova::Server&lt;/code&gt;, attach to it an instance of &lt;code&gt;OS::Neutron::Port&lt;/code&gt;,
+and attach to that port an instance of &lt;code&gt;OS::Neutron::FloatingIP&lt;/code&gt;.
+Note that use of the &lt;a href="http://docs.openstack.org/developer/heat/template_guide/hot_spec.html#get-resource"&gt;get_resource&lt;/a&gt; function here to refer to a
+resource defined elsewhere in the template:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;resources&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;instance0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OS&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Nova&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Server&lt;/span&gt;
+    &lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;instance0&lt;/span&gt;
+      &lt;span class="n"&gt;image&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;image&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+      &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;flavor&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+      &lt;span class="n"&gt;key_name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;key_name&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+      &lt;span class="n"&gt;networks&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;port&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_resource&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;instance0_port0&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+  &lt;span class="n"&gt;instance0_port0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OS&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Neutron&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Port&lt;/span&gt;
+    &lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="n"&gt;network_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;private_net_id&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+      &lt;span class="n"&gt;security_groups&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="k"&gt;default&lt;/span&gt;
+      &lt;span class="n"&gt;fixed_ips&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;subnet_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;private_subnet_id&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+  &lt;span class="n"&gt;instance0_public&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OS&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Neutron&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;FloatingIP&lt;/span&gt;
+    &lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="n"&gt;floating_network_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;public_net_id&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+      &lt;span class="n"&gt;port_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_resource&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;instance0_port0&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;As outputs we provide the fixed and floating ip addresses assigned to
+our instance:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;outputs&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;instance0_private_ip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;IP&lt;/span&gt; &lt;span class="n"&gt;address&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;instance0&lt;/span&gt; &lt;span class="k"&gt;in&lt;/span&gt; &lt;span class="kd"&gt;private&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt;
+    &lt;span class="n"&gt;value&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_attr&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;[&lt;/span&gt; &lt;span class="n"&gt;instance0&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;first_address&lt;/span&gt; &lt;span class="o"&gt;]&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+  &lt;span class="n"&gt;instance0_public_ip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Floating&lt;/span&gt; &lt;span class="n"&gt;IP&lt;/span&gt; &lt;span class="n"&gt;address&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;instance0&lt;/span&gt; &lt;span class="k"&gt;in&lt;/span&gt; &lt;span class="kd"&gt;public&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt;
+    &lt;span class="n"&gt;value&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_attr&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;[&lt;/span&gt; &lt;span class="n"&gt;instance0_public&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;floating_ip_address&lt;/span&gt; &lt;span class="o"&gt;]&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Filling in the blanks&lt;/h2&gt;
+&lt;p&gt;Now that we have a complete template, what do we do with it?&lt;/p&gt;
+&lt;p&gt;When you deploy from a template, you need to provide values for any
+parameters required by the template (and you may also want to override
+default values).  You can do this using the &lt;code&gt;-P&lt;/code&gt; (aka &lt;code&gt;--parameter&lt;/code&gt;)
+command line option, which takes a semicolon-delimited list of
+&lt;code&gt;name=value&lt;/code&gt; pairs:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;heat&lt;/span&gt; &lt;span class="n"&gt;stack&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;P&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;param1&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;value1&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="n"&gt;param2&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;value2&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While this works, it's not terribly useful, especially as the
+parameter list grows long. You can also provide parameters via an
+&lt;a href="https://wiki.openstack.org/wiki/Heat/Environments"&gt;environment file&lt;/a&gt;, which a YAML configuration file containing a
+&lt;code&gt;parameters&lt;/code&gt; key (you can use environment files for other things, too,
+but here we're going to focus on their use for template parameters).
+A sample file, equivalent to arguments to &lt;code&gt;-P&lt;/code&gt; in the above command
+line, might look like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;parameters&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;param1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;value1&lt;/span&gt;
+  &lt;span class="n"&gt;param2&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;value2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;An environment file appropriate to our example template from the
+previous section might look like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;parameters&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;image&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;19&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x86_64&lt;/span&gt;
+  &lt;span class="n"&gt;flavor&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;m1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;small&lt;/span&gt;
+  &lt;span class="n"&gt;private_net_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;99&lt;/span&gt;&lt;span class="n"&gt;ab8ebf&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ad2f&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;a4b&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;9890&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fee37cea4254&lt;/span&gt;
+  &lt;span class="n"&gt;private_subnet_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ed8ad5f5&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;c47&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4204&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;ca3&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="n"&gt;b3bc4de286d&lt;/span&gt;
+  &lt;span class="n"&gt;public_net_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;7&lt;/span&gt;&lt;span class="n"&gt;e687cc3&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;8155&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;ec2&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;bd11&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ba741ecbf4f0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You would, of course, need to replace the network ids with ones
+appropriate to your environment.&lt;/p&gt;
+&lt;h2&gt;Command line client&lt;/h2&gt;
+&lt;p&gt;With the template in a file called &lt;code&gt;template.yml&lt;/code&gt; and the parameters
+in a file called &lt;code&gt;environment.yml&lt;/code&gt;, we could deploy an instance like
+this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;heat&lt;/span&gt; &lt;span class="n"&gt;stack&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;f&lt;/span&gt; &lt;span class="n"&gt;template&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;yml&lt;/span&gt; \
+  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt; &lt;span class="n"&gt;environment&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;yml&lt;/span&gt; &lt;span class="n"&gt;mystack&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This would, assuming no errors, create a stack called &lt;code&gt;mystack&lt;/code&gt;.  You
+can view the status of your stacks with the &lt;code&gt;stack-list&lt;/code&gt; subcommand:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;heat&lt;/span&gt; &lt;span class="n"&gt;stack&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;list&lt;/span&gt;
+&lt;span class="o"&gt;+-------+------------+-----------------+----------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;id&lt;/span&gt;    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;stack_name&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;stack_status&lt;/span&gt;    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;creation_time&lt;/span&gt;        &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+-------+------------+-----------------+----------------------+&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mf"&gt;0.&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;.6&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;mystack&lt;/span&gt;    &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="n"&gt;CREATE_COMPLETE&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt; &lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="n"&gt;T21&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;37&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;32&lt;/span&gt;&lt;span class="n"&gt;Z&lt;/span&gt; &lt;span class="o"&gt;|&lt;/span&gt;
+&lt;span class="o"&gt;+-------+------------+-----------------+----------------------+&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You can view detailed information about your stack -- including the
+values of your outputs -- using the &lt;code&gt;stack-show&lt;/code&gt; subcommand:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;heat&lt;/span&gt; &lt;span class="n"&gt;stack&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;show&lt;/span&gt; &lt;span class="n"&gt;mystack&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;(The output is a little too verbose to include here.)&lt;/p&gt;
+&lt;p&gt;If you want more convenient access to the values of your outputs,
+you're going to have to either make direct use of the Heat &lt;a href="http://api.openstack.org/api-ref-orchestration.html"&gt;REST
+API&lt;/a&gt;, or wait for my &lt;a href="https://review.openstack.org/#/c/60591/"&gt;proposed change&lt;/a&gt; to the
+&lt;a href="https://launchpad.net/python-heatclient"&gt;python-heatclient&lt;/a&gt; package, which will add the &lt;code&gt;output-list&lt;/code&gt; and
+&lt;code&gt;output-get&lt;/code&gt; subcommands:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;heat&lt;/span&gt; &lt;span class="n"&gt;output&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;list&lt;/span&gt; &lt;span class="n"&gt;mystack&lt;/span&gt;
+  &lt;span class="n"&gt;instance0_private_ip&lt;/span&gt;
+  &lt;span class="n"&gt;instance0_public_ip&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;heat&lt;/span&gt; &lt;span class="n"&gt;output&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt; &lt;span class="n"&gt;mystack&lt;/span&gt; &lt;span class="n"&gt;instance0_public_ip&lt;/span&gt;
+&lt;span class="mf"&gt;192.168.122.203&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Working with Neutron&lt;/h2&gt;
+&lt;p&gt;If you are using Heat in an environment that uses &lt;a href="https://wiki.openstack.org/wiki/Neutron"&gt;Neutron&lt;/a&gt; for
+networking you may need to take a few additional steps.  By default,
+your virtual instances will not be associated with &lt;em&gt;any&lt;/em&gt; security
+groups, which means that they will have neither outbound or inbound
+network connectivity.  This is in contrast to instances started using
+the &lt;code&gt;nova boot&lt;/code&gt; command, which will automatically be members of the
+&lt;code&gt;default&lt;/code&gt; security group.&lt;/p&gt;
+&lt;p&gt;In order to provide your instances with appropriate network
+connectivity, you will need to associate each &lt;code&gt;OS::Neutron::Port&lt;/code&gt;
+resource in your template with one or more security groups.  For
+example, the following configuration snippet would create a port
+&lt;code&gt;instance0_port0&lt;/code&gt; and assign it to the &lt;code&gt;default&lt;/code&gt; and &lt;code&gt;webserver&lt;/code&gt;
+security groups:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;instance0_port0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+  &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;OS&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Neutron&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Port&lt;/span&gt;
+  &lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;network_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;private_net_id&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+    &lt;span class="n"&gt;security_groups&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="k"&gt;default&lt;/span&gt;
+      &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;webserver&lt;/span&gt;
+    &lt;span class="n"&gt;fixed_ips&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+      &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="n"&gt;subnet_id&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="n"&gt;get_param&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;private_subnet_id&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;For this to work, you will need to be running a (very) recent version
+of Heat.  Until commit &lt;a href="https://github.com/openstack/heat/commit/902154c"&gt;902154c&lt;/a&gt;, Heat was unable to look up Neutron security
+groups by name.  It worked fine if you specified security groups by
+UUID:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nl"&gt;security_groups:&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="mf"&gt;4296f3ff&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;dc0&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;b0b&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;a633&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c30eacc8493d&lt;/span&gt;
+  &lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="mi"&gt;8&lt;/span&gt;&lt;span class="n"&gt;c49cd42&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;7&lt;/span&gt;&lt;span class="n"&gt;c42&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;a1f&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;af1d&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;492&lt;/span&gt;&lt;span class="n"&gt;a0687fc12&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;See also&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;The Heat project maintains a &lt;a href="https://github.com/openstack/heat-templates"&gt;repository of example
+  templates&lt;/a&gt;.&lt;/li&gt;
+&lt;/ul&gt;</summary><category term="openstack"></category><category term="heat"></category><category term="neutron"></category></entry><entry><title>Why does the Neutron documentation recommend three interfaces?</title><link href="http://blog-beta.oddbit.com/2013/10/28/why-does-the-neutron/" rel="alternate"></link><updated>2013-10-28T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-10-28:2013/10/28/why-does-the-neutron/</id><summary type="html">&lt;p&gt;The &lt;a href="http://docs.openstack.org/havana/install-guide/install/yum/content/neutron-install.dedicated-network-node.html"&gt;documentation for configuring Neutron&lt;/a&gt; recommends
+that a network controller has three physical interfaces:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Before you start, set up a machine to be a dedicated network node.
+Dedicated network nodes should have the following NICs: the
+management NIC (called MGMT_INTERFACE), the data NIC (called
+DATA_INTERFACE), and the external NIC (called EXTERNAL_INTERFACE).&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;People occasionally ask, "why three interfaces? What if I only have
+two?", so I wanted to provide an extended answer that might help
+people understand what the interfaces are for and what trade-offs are
+involved in using fewer interfaces.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;p&gt;The &lt;code&gt;MGMT_INTERFACE&lt;/code&gt; is used for communication between nodes.  This
+can include traffic from services to the messaging server (&lt;code&gt;qpid&lt;/code&gt;,
+&lt;code&gt;rabbitmq&lt;/code&gt;, etc), traffic between nova and neutron, connections to the
+database, and other traffic used to manage your OpenStack environment.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;DATA_INTERFACE&lt;/code&gt; is used for instance traffic...that is, traffic
+generated by or inbound to instances running in your OpenStack
+environment.  If you are using GRE or VXLAN tunnels your tunnel
+endpoints will be associated with this interface.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;EXTERNAL_INTERFACE&lt;/code&gt; is used to provide public access to your
+instances.  The network attached to this interface is generally open
+to external traffic, and ip addresses are managed by the floating-ip
+functionality in Neutron or Nova.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;You want your &lt;code&gt;MGMT_INTERFACE&lt;/code&gt; seperate from your &lt;code&gt;DATA_INTERFACE&lt;/code&gt;
+  in order to avoid accidentally granting management access to your
+  OpenStack hosts to your tenants.  A typical OpenStack environment
+  may not use authentication in all cases, and a tenant host with
+  access to the management network could intentionally or accidentally
+  cause problems.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;You want your &lt;code&gt;EXTERNAL_INTERFACE&lt;/code&gt; separate from your
+  &lt;code&gt;DATA_INTERFACE&lt;/code&gt; because your network controller &lt;em&gt;must&lt;/em&gt; be acting as
+  a router between these two interfaces in order for the netfilter
+  &lt;code&gt;PREROUTING&lt;/code&gt; and &lt;code&gt;POSTROUTING&lt;/code&gt; rules to activate.  These rules are
+  used to map floating ip addresses to internal addresses via &lt;code&gt;SNAT&lt;/code&gt;
+  and &lt;code&gt;DNAT&lt;/code&gt; rules, which only work packets traverse the &lt;code&gt;FORWARD&lt;/code&gt;
+  chain.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;You want your &lt;code&gt;MGMT_INTERFACE&lt;/code&gt; separate from your
+  &lt;code&gt;EXTERNAL_INTERFACE&lt;/code&gt; because they have dramatically different access
+  requirements.  Your &lt;code&gt;MGMT_INTERFACE&lt;/code&gt; should typically only be
+  available to other hosts in your OpenStack deployment, while your
+  &lt;code&gt;EXTERNAL_INTERFACE&lt;/code&gt; will generally require much broader access.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;If you are deploying a proof-of-concept (POC) deployment to which you
+are not actually providing public access, you can elect to not have an
+&lt;code&gt;EXTERNAL_INTERFACE&lt;/code&gt;. Rather than adding this device to &lt;code&gt;br-ex&lt;/code&gt;, you
+will set up outbound NAT rules so that "external" traffic from your
+instances will masquerade using the primary ip address of your network
+controller.&lt;/p&gt;</summary><category term="openstack"></category><category term="neutron"></category><category term="networking"></category></entry></feed>

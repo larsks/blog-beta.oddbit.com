@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/puppet/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2014-04-16T00:00:00-04:00</updated><entry><title>Extending Puppet</title><link href="http://blog-beta.oddbit.com/2014/04/16/article-on-extending-puppet/" rel="alternate"></link><updated>2014-04-16T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-04-16:2014/04/16/article-on-extending-puppet/</id><summary type="html">&lt;p&gt;I wanted to learn about writing custom Puppet types and providers.
+The official documentation is a little sparse, but I finally stumbled
+upon the following series of articles by &lt;a href="http://garylarizza.com/"&gt;Gary Larizza&lt;/a&gt; that provide
+a great deal of insight into the process and a bunch of example code:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="http://garylarizza.com/blog/2013/11/25/fun-with-providers/"&gt;Fun With Puppet Providers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://garylarizza.com/blog/2013/11/26/fun-with-providers-part-2/"&gt;Who Abstracted My Ruby?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://garylarizza.com/blog/2013/12/15/seriously-what-is-this-provider-doing/"&gt;Seriously, What Is This Provider Doing?&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</summary><category term="puppet"></category></entry><entry><title>A quote about XMLRPC</title><link href="http://blog-beta.oddbit.com/2013/02/25/puppet-xmlrpc-quote/" rel="alternate"></link><updated>2013-02-25T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-02-25:2013/02/25/puppet-xmlrpc-quote/</id><summary type="html">&lt;p&gt;I've been reading up on Puppet 3 lately, and came across the
+following:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;XMLRPC was the new hotness when development on Puppet started. Now,
+XMLRPC is that horrible thing with the XML and the angle brackets and
+the pain and sad.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;(from &lt;a href="http://somethingsinistral.net/blog/the-angry-guide-to-puppet-3/"&gt;http://somethingsinistral.net/blog/the-angry-guide-to-puppet-3/&lt;/a&gt;)&lt;/p&gt;
+&lt;p&gt;...which also accurately sums up my feelings when I come across yet
+another piece of software where someone has decided that XML (or even
+JSON) is a good user-facing configuration syntax.&lt;/p&gt;</summary><category term="puppet"></category></entry><entry><title>Puppet, scope, and inheritance</title><link href="http://blog-beta.oddbit.com/2011/08/16/puppet-scope-and-inheritance/" rel="alternate"></link><updated>2011-08-16T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2011-08-16:2011/08/16/puppet-scope-and-inheritance/</id><summary type="html">&lt;p&gt;I note this here because it wasn't apparent to me from the Puppet documentation.&lt;/p&gt;
+&lt;p&gt;If you have a Puppet class like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;class&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;File&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;  &lt;span class="n"&gt;ensure&lt;/span&gt;  &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;file&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+          &lt;span class="n"&gt;mode&lt;/span&gt;    &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="mi"&gt;600&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+          &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And you use it like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;class&lt;/span&gt; &lt;span class="n"&gt;bar&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;include&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt;
+
+  &lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;tmp&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;myfile&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Then /tmp/myfile will not be created. But if instead you do this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;class&lt;/span&gt; &lt;span class="n"&gt;bar&lt;/span&gt; &lt;span class="n"&gt;inherits&lt;/span&gt; &lt;span class="n"&gt;foo&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;file&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;tmp&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;myfile&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;It will be created with mode 0600. In other words, if you use inherits then definitions in the parent class are available in the scope of your subclass. If you include, then definitions in he included class are "below" the scope of the including class.&lt;/p&gt;</summary><category term="puppet"></category></entry></feed>

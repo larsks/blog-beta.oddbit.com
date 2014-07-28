@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/firewalld/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2014-05-20T00:00:00-04:00</updated><entry><title>Firewalld, NetworkManager, and OpenStack</title><link href="http://blog-beta.oddbit.com/2014/05/20/firewalld-and-openstack/" rel="alternate"></link><updated>2014-05-20T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-05-20:2014/05/20/firewalld-and-openstack/</id><summary type="html">&lt;p&gt;These are my notes on making OpenStack play well with &lt;a href="https://fedoraproject.org/wiki/FirewallD"&gt;firewalld&lt;/a&gt;
+and &lt;a href="https://wiki.gnome.org/Projects/NetworkManager"&gt;NetworkManager&lt;/a&gt;.&lt;/p&gt;
+&lt;h2&gt;NetworkManager&lt;/h2&gt;
+&lt;p&gt;By default, NetworkManager attempts to start a DHCP client on every
+new available interface.  Since booting a single instance in OpenStack
+can result in the creation of several virtual interfaces, this results
+in a lot of:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nx"&gt;May&lt;/span&gt; &lt;span class="mi"&gt;19&lt;/span&gt; &lt;span class="mi"&gt;11&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;58&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt; &lt;span class="nx"&gt;pk115wp&lt;/span&gt;&lt;span class="na"&gt;-lkellogg&lt;/span&gt; &lt;span class="nx"&gt;NetworkManager&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1357&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;: &lt;span class="nt"&gt;&amp;lt;info&amp;gt;&lt;/span&gt;
+  Activation (qvb512640bd-ee) starting connection &amp;#39;Wired connection 2&amp;#39;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You can disable this behavior by adding the following to
+&lt;code&gt;/etc/NetworkManager/NetworkManager.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[main]&lt;/span&gt;
+&lt;span class="na"&gt;no-auto-default&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;*&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;From &lt;code&gt;NetworkManager.conf(5)&lt;/code&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Comma-separated list of devices for which NetworkManager shouldn't
+ create default wired connection (Auto eth0). By default,
+ NetworkManager creates a temporary wired connection for any
+ Ethernet device that is managed and doesn't have a connection
+ configured. List a device in this option to inhibit creating the
+ default connection for the device. May have the special value * to
+ apply to all devices.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2&gt;FirewallD&lt;/h2&gt;
+&lt;p&gt;&lt;a href="https://fedoraproject.org/wiki/FirewallD"&gt;FirewallD&lt;/a&gt; is the firewall manager recently introduced in Fedora
+(and soon to be appearing in RHEL 7).&lt;/p&gt;
+&lt;p&gt;I start by creating a new zone named &lt;code&gt;openstack&lt;/code&gt; by creating the file
+&lt;code&gt;/etc/firewalld/zones/openstack.xml&lt;/code&gt; with the following content:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;utf-8&amp;quot;?&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;zone&amp;gt;&lt;/span&gt;
+  &lt;span class="nt"&gt;&amp;lt;short&amp;gt;&lt;/span&gt;OpenStack&lt;span class="nt"&gt;&amp;lt;/short&amp;gt;&lt;/span&gt;
+  &lt;span class="nt"&gt;&amp;lt;description&amp;gt;&lt;/span&gt;For OpenStack services&lt;span class="nt"&gt;&amp;lt;/description&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/zone&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;After populating this file, you need to run &lt;code&gt;firewall-cmd --reload&lt;/code&gt;
+to make the zone available.  Note that if you're already running
+OpenStack this will hose any rules set up by Neutron or Nova, so
+you'll probably want to restart those services:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# openstack-service restart nova neutron&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I then add &lt;code&gt;br-ex&lt;/code&gt; to this zone, where &lt;code&gt;br-ex&lt;/code&gt; is the OVS bridge my
+OpenStack environment uses for external connectivity:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# echo ZONE=openstack &amp;gt;&amp;gt; /etc/sysconfig/network-scripts/ifcfg-br-ex&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I run a &lt;code&gt;dnsmasq&lt;/code&gt; instance on my laptop to which I expect OpenStack
+instances to connect, so I need to add the &lt;code&gt;dns&lt;/code&gt; service to this zone:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# firewall-cmd --zone openstack --add-service dns&lt;/span&gt;
+&lt;span class="c"&gt;# firewall-cmd --zone openstack --add-service dns --permanent&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I'm running &lt;code&gt;firewall-cmd&lt;/code&gt; twice here: the first time modifies the
+currently running configuration, while the second makes the change
+persistent across reboots.&lt;/p&gt;
+&lt;p&gt;On my laptop, I handle external connectivity through NAT rather than
+placing floating ips on a "real" network.  To make this work, I add my
+ethernet and wireless interfaces to the &lt;code&gt;external&lt;/code&gt; zone, which already
+has ip masquerading enabled, by adding a &lt;code&gt;ZONE&lt;/code&gt; directive to the
+appropriate interface configuration file:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# echo ZONE=external &amp;gt;&amp;gt; /etc/sysconfig/network-scripts/ifcfg-em1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;After a reboot, things look like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# firewall-cmd --get-active-zones&lt;/span&gt;
+&lt;span class="n"&gt;openstack&lt;/span&gt;
+  &lt;span class="nl"&gt;interfaces:&lt;/span&gt; &lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ex&lt;/span&gt;
+&lt;span class="n"&gt;external&lt;/span&gt;
+  &lt;span class="nl"&gt;interfaces:&lt;/span&gt; &lt;span class="n"&gt;em1&lt;/span&gt;
+&lt;span class="n"&gt;public&lt;/span&gt;
+  &lt;span class="nl"&gt;interfaces:&lt;/span&gt; &lt;span class="kt"&gt;int&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ex&lt;/span&gt; &lt;span class="n"&gt;phy&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;br&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ex&lt;/span&gt; &lt;span class="n"&gt;qvb58cc67ca&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt; &lt;span class="n"&gt;qvo58cc67ca&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt;
+&lt;span class="cp"&gt;# firewall-cmd --zone openstack --list-services&lt;/span&gt;
+&lt;span class="n"&gt;dns&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;</summary><category term="openstack"></category><category term="networking"></category><category term="firewalld"></category><category term="NetworkManager"></category></entry></feed>

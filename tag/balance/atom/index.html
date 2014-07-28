@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/balance/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2010-02-24T00:00:00-05:00</updated><entry><title>LDAP redundancy through proxy servers</title><link href="http://blog-beta.oddbit.com/2010/02/24/ldap-redundancy-through-proxy-servers/" rel="alternate"></link><updated>2010-02-24T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-02-24:2010/02/24/ldap-redundancy-through-proxy-servers/</id><summary type="html">&lt;h1&gt;Problem 1: Failover&lt;/h1&gt;
+&lt;h2&gt;The problem&lt;/h2&gt;
+&lt;p&gt;Many applications only allow you to configure a single LDAP server. This can lead to unnecessary service outages if your directory service infrastructure is highly available (e.g., you are running Active Directory) and your application cannot take advantage of this fact.&lt;/p&gt;
+&lt;h2&gt;A solution&lt;/h2&gt;
+&lt;p&gt;We can provide a level of redundancy by passing the LDAP connections through a load balancing proxy. While this makes the proxy a single point of failure, it is (a) a very simple tool and thus less prone to complex failure modes, (b) running on the same host as the web application, and (c) is completely under our control.&lt;/p&gt;
+&lt;p&gt;For this example, I will use &lt;a href="http://www.inlab.de/balance.html"&gt;Balance&lt;/a&gt;, a simple TCP load balancer from &lt;a href="http://www.inlab.de/"&gt;Inlab Software GmbH&lt;/a&gt;. There are packages available for most major Linux distributions, including &lt;a href="http://fedoraproject.org/"&gt;Fedora&lt;/a&gt; and &lt;a href="http://www.centos.org/"&gt;CentOS&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Balance is configured completely on the command line. To provide round-robin access to a suite of three directory servers running LDAP over SSL, you might use the following command line:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;balance&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="mf"&gt;127.0.0.1&lt;/span&gt; &lt;span class="mi"&gt;636&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.1&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Using balance's terminology, this creates one &lt;em&gt;group&lt;/em&gt; of two &lt;em&gt;channels&lt;/em&gt;. Balance will round-robin among the channels in this group. Note that here and in subsequent examples we are binding the proxy to the loopback interface so that it is only available to applications running on the same host.&lt;/p&gt;
+&lt;p&gt;If you would prefer to preferentially send all the requests to the first server, and only use the second server if the first is unavailable, you could use a configuration like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;balance&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="mf"&gt;127.0.0.1&lt;/span&gt; &lt;span class="mi"&gt;636&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.1&lt;/span&gt; &lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While you can run balance from a standard init (/etc/rc.d/...) script, I prefer to use a service manager such as &lt;a href="http://smarden.org/runit/"&gt;runit&lt;/a&gt; which takes care of restarting the service if it should exit unexpectedly. You could achieve the same thing in a slightly less flexible fashion by putting your balance command line in /etc/inittab. In either case you need to add the -f option to the command line, which causes balance to stay in the foreground.&lt;/p&gt;
+&lt;h1&gt;Problem 2: Debugging LDAP over SSL&lt;/h1&gt;
+&lt;h2&gt;The problem&lt;/h2&gt;
+&lt;p&gt;It is convenient to use a packet tracer such as &lt;a href="http://www.wireshark.org/"&gt;Wireshark&lt;/a&gt; to debug LDAP protocol errors. This is often more informative than the debugging information that will be available to you on the client side, and may be more useful than server side debugging in many cases, even supposing that you have administrative access to the directory servers.&lt;/p&gt;
+&lt;h2&gt;A solution&lt;/h2&gt;
+&lt;p&gt;You can use &lt;a href="http://www.stunnel.org/"&gt;Stunnel&lt;/a&gt;, a general purpose SSL proxy tool, to intercept unencrypted client connections on the local machine and then forward them over an SSL channel to a remote server. This makes the unencrypted LDAP traffic available on the loopback interface while still ensuring that it is encrypted on the wire.&lt;/p&gt;
+&lt;p&gt;Stunnel can operate both as an SSL server and as an SSL client. In this case, we will be running it in client mode, connecting to a remote SSL server (or to the proxy configured in our previous example). Stunnel is configured by means of a simple INI-style configuration file. To achieve the goals of this example we might put the following configuration in a file (say, stunnel.conf):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ldap]&lt;/span&gt;
+
+&lt;span class="na"&gt;accept&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;127.0.0.1:389&lt;/span&gt;
+&lt;span class="na"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;yes&lt;/span&gt;
+&lt;span class="na"&gt;connect&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;localhost:636&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We would run stunnel like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;stunnel&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;to&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;stunnel&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Again, I would run this under the control of a service supervisor. To keep stunnel in the foreground we would add the following to the global section of the configuration file (i.e., before the &lt;code&gt;[ldap]&lt;/code&gt; section marker):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;foreground&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;yes&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With both of these solutions in place, we have achieved the following:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;High availability.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our application will transparently make use of multiple directory servers. If a server fails, our application will continue to operate.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Security&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our traffic is encrypted on the wire, regardless of whether the application has support for LDAP over SSL.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Visibility&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;We are free to examine unencrypted traffic with a packet sniffer running on the local host.&lt;/p&gt;</summary><category term="balance"></category><category term="ldap"></category><category term="stunnel"></category><category term="proxy"></category><category term="ha"></category><category term="howto"></category><category term="ssl"></category></entry></feed>

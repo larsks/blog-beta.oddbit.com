@@ -1,0 +1,628 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/kernel/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2014-07-21T00:00:00-04:00</updated><entry><title>Tracking down a kernel bug with git bisect</title><link href="http://blog-beta.oddbit.com/2014/07/21/tracking-down-a-kernel-bug-wit/" rel="alternate"></link><updated>2014-07-21T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2014-07-21:2014/07/21/tracking-down-a-kernel-bug-wit/</id><summary type="html">&lt;p&gt;After a recent upgrade of my Fedora 20 system to kernel 3.15.mumble, I
+started running into a problem (&lt;a href="https://bugzilla.redhat.com/show_bug.cgi?id=1121345"&gt;BZ 1121345&lt;/a&gt;) with my &lt;a href="https://www.docker.com/"&gt;Docker&lt;/a&gt;
+containers.  Operations such as &lt;code&gt;su&lt;/code&gt; or &lt;code&gt;runuser&lt;/code&gt; would fail with the
+singularly unhelpful &lt;code&gt;System error&lt;/code&gt; message:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;docker&lt;/span&gt; &lt;span class="n"&gt;run&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ti&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bash&lt;/span&gt;
+&lt;span class="n"&gt;bash&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;4.2&lt;/span&gt;&lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="n"&gt;su&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;uptime&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="nl"&gt;su:&lt;/span&gt; &lt;span class="n"&gt;System&lt;/span&gt; &lt;span class="n"&gt;error&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Hooking up something (like, say, &lt;code&gt;socat unix-listen:/dev/log -&lt;/code&gt;) to
+&lt;code&gt;/dev/log&lt;/code&gt; revealed that the system was logging:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Jul&lt;/span&gt; &lt;span class="mi"&gt;19&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;31&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;18&lt;/span&gt; &lt;span class="n"&gt;su&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;PAM&lt;/span&gt; &lt;span class="n"&gt;audit_log_acct_message&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="n"&gt;failed&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Operation&lt;/span&gt; &lt;span class="n"&gt;not&lt;/span&gt; &lt;span class="n"&gt;permitted&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Downgrading the kernel to 3.14 immediately resolved the problem,
+suggesting that this was at least partly a kernel issue.  This seemed
+like a great opportunity to play with the &lt;a href="http://git-scm.com/docs/git-bisect"&gt;git bisect&lt;/a&gt; command,
+which uses a binary search to find which commit introduced a
+particular problem.&lt;/p&gt;
+&lt;p&gt;Unfortunately, between the version I knew to work correctly (3.14) and
+the version I knew to have a problem (3.15) there were close to 15,000
+commits, which seemed like a large space to search by hand.&lt;/p&gt;
+&lt;p&gt;Fortunately, &lt;code&gt;git bisect&lt;/code&gt; can be easily automated via &lt;code&gt;git bisect run&lt;/code&gt;
+subcommand, which after checking out a commit will run a script to
+determine if the current commit is "good" or "bad".  So all I have to
+do is write a script...that's not so bad!&lt;/p&gt;
+&lt;p&gt;&lt;img src="/assets/ha-ha.jpg" width="300"/&gt;&lt;/p&gt;
+&lt;p&gt;It actually ended up being somewhat tricky.&lt;/p&gt;
+&lt;h2&gt;Testing kernels is hard&lt;/h2&gt;
+&lt;p&gt;In order to test for this problem, I would need to use arbitrary
+kernels generated during the &lt;code&gt;git bisect&lt;/code&gt; operation to boot a system
+functional enough to run docker, and then run docker and somehow
+communicate the result of that test back to the build environment.&lt;/p&gt;
+&lt;p&gt;I started with the &lt;a href="http://fedoraproject.org/get-fedora#clouds"&gt;Fedora 20 cloud image&lt;/a&gt;, which is nice and
+small but still the same platform as my laptop on which I was
+experiencing the problem.  I would need to correct a few things before
+moving forward:&lt;/p&gt;
+&lt;p&gt;The Fedora cloud images (a) do not support password authentication and
+(b) expect a datasource to be available to &lt;a href="http://cloudinit.readthedocs.org/en/latest/"&gt;cloud-init&lt;/a&gt; (without
+which you get errors on the console and potentially a delay waiting
+for the &lt;code&gt;login:&lt;/code&gt; prompt), so prior to using the image in this test I
+made some changes by mounting it locally:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# modprobe nbd max_part=8&lt;/span&gt;
+&lt;span class="c"&gt;# qemu-nbd -c /dev/nbd0 Fedora-x86_64-20-20140407-sda.qcow2&lt;/span&gt;
+&lt;span class="c"&gt;# mount /dev/nbd0p1 /mnt&lt;/span&gt;
+&lt;span class="c"&gt;# systemd-nspawn -D /mnt&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And then:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;I set a password for the &lt;code&gt;root&lt;/code&gt; account and&lt;/li&gt;
+&lt;li&gt;I removed the &lt;code&gt;cloud-init&lt;/code&gt; package.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;For this test I would be using the &lt;code&gt;qemu-system-x86_64&lt;/code&gt; command
+directly, rather than working through &lt;code&gt;libvirt&lt;/code&gt; (&lt;code&gt;qemu&lt;/code&gt; has options
+for convenient debugging with &lt;code&gt;gdb&lt;/code&gt;, and is also able to access the
+filesystem as the calling &lt;code&gt;uid&lt;/code&gt; whereas &lt;code&gt;libvirt&lt;/code&gt; is typically running
+as another user).&lt;/p&gt;
+&lt;p&gt;I would need to perform an initial &lt;code&gt;docker pull&lt;/code&gt; in the image, which
+meant I was going to need a functioning network, so first I had to set
+up a network environment for qemu.&lt;/p&gt;
+&lt;h3&gt;Network configuration&lt;/h3&gt;
+&lt;p&gt;I created a bridge interface named &lt;code&gt;qemu0&lt;/code&gt; to be used by &lt;code&gt;qemu&lt;/code&gt;.  I added
+to &lt;code&gt;/etc/sysconfig/network-scripts/ifcfg-qemu0&lt;/code&gt; the following:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;DEVICE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;qemu0&lt;/span&gt;
+&lt;span class="n"&gt;TYPE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;Bridge&lt;/span&gt;
+&lt;span class="n"&gt;ONBOOT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;yes&lt;/span&gt;
+&lt;span class="n"&gt;BOOTPROTO&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;none&lt;/span&gt;
+&lt;span class="n"&gt;STP&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;no&lt;/span&gt;
+&lt;span class="n"&gt;NAME&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;Bridge qemu0&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;IPADDR&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;192.168.210.1&lt;/span&gt;
+&lt;span class="n"&gt;NETMASK&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;255.255.255.0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This is largely equivalent to the following, but persists after reboot:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;brctl&lt;/span&gt; &lt;span class="n"&gt;addbr&lt;/span&gt; &lt;span class="n"&gt;qemu0&lt;/span&gt;
+&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt; &lt;span class="n"&gt;add&lt;/span&gt; &lt;span class="mf"&gt;192.168.210.1&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt; &lt;span class="n"&gt;dev&lt;/span&gt; &lt;span class="n"&gt;qemu0&lt;/span&gt;
+&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;link&lt;/span&gt; &lt;span class="n"&gt;set&lt;/span&gt; &lt;span class="n"&gt;qemu0&lt;/span&gt; &lt;span class="n"&gt;up&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I created a &lt;a href="https://www.kernel.org/doc/Documentation/networking/tuntap.txt"&gt;tap&lt;/a&gt; interface named &lt;code&gt;linux0&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;ip&lt;/span&gt; &lt;span class="n"&gt;tuntap&lt;/span&gt; &lt;span class="n"&gt;add&lt;/span&gt; &lt;span class="n"&gt;dev&lt;/span&gt; &lt;span class="n"&gt;linux0&lt;/span&gt; &lt;span class="n"&gt;mode&lt;/span&gt; &lt;span class="n"&gt;tap&lt;/span&gt; &lt;span class="n"&gt;user&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And added it to the bridge:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;brctl&lt;/span&gt; &lt;span class="n"&gt;addif&lt;/span&gt; &lt;span class="n"&gt;qemu0&lt;/span&gt; &lt;span class="n"&gt;linux0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I also started up &lt;code&gt;dnsmasq&lt;/code&gt; process listening on &lt;code&gt;qemu0&lt;/code&gt; to provide
+DNS lookup and DHCP service to qemu instances attached to this bridge.
+The &lt;code&gt;dnsmasq&lt;/code&gt; configuration looked like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;listen&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;address&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;192.168.210.1&lt;/span&gt;
+&lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;interfaces&lt;/span&gt;
+&lt;span class="n"&gt;dhcp&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;range&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;192.168.210.10&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="mf"&gt;192.168.210.254&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Running qemu&lt;/h3&gt;
+&lt;p&gt;With the network environment set up, I needed to figure out an
+appropriate qemu command line.  This is what I finally ended up with,
+in a script called &lt;code&gt;boot-kernel&lt;/code&gt;:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt; 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+qemu-system-x86_64 -m 1024M &lt;span class="se"&gt;\&lt;/span&gt;
+  -drive &lt;span class="nv"&gt;file&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;fedora.img,if&lt;span class="o"&gt;=&lt;/span&gt;virtio &lt;span class="se"&gt;\&lt;/span&gt;
+  -append &lt;span class="s2"&gt;&amp;quot;console=hvc0 root=/dev/vda1 selinux=0 $BOOT_ARGS&amp;quot;&lt;/span&gt; &lt;span class="se"&gt;\&lt;/span&gt;
+  -initrd initrd.img &lt;span class="se"&gt;\&lt;/span&gt;
+  -kernel arch/x86_64/boot/bzImage &lt;span class="se"&gt;\&lt;/span&gt;
+  -machine &lt;span class="nv"&gt;accel&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;kvm &lt;span class="se"&gt;\&lt;/span&gt;
+  -netdev tap,id&lt;span class="o"&gt;=&lt;/span&gt;net0,ifname&lt;span class="o"&gt;=&lt;/span&gt;linux0,script&lt;span class="o"&gt;=&lt;/span&gt;no,downscript&lt;span class="o"&gt;=&lt;/span&gt;no &lt;span class="se"&gt;\&lt;/span&gt;
+  -device virtio-net,netdev&lt;span class="o"&gt;=&lt;/span&gt;net0,mac&lt;span class="o"&gt;=&lt;/span&gt;52:54:00:c0:ff:ee &lt;span class="se"&gt;\&lt;/span&gt;
+  -chardev stdio,id&lt;span class="o"&gt;=&lt;/span&gt;stdio,mux&lt;span class="o"&gt;=&lt;/span&gt;on &lt;span class="se"&gt;\&lt;/span&gt;
+  -device virtio-serial-pci &lt;span class="se"&gt;\&lt;/span&gt;
+  -device virtconsole,chardev&lt;span class="o"&gt;=&lt;/span&gt;stdio &lt;span class="se"&gt;\&lt;/span&gt;
+  -mon &lt;span class="nv"&gt;chardev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;stdio &lt;span class="se"&gt;\&lt;/span&gt;
+  -fsdev &lt;span class="nb"&gt;local&lt;/span&gt;,id&lt;span class="o"&gt;=&lt;/span&gt;fs0,path&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nv"&gt;$PWD&lt;/span&gt;,security_model&lt;span class="o"&gt;=&lt;/span&gt;none &lt;span class="se"&gt;\&lt;/span&gt;
+  -device virtio-9p-pci,fsdev&lt;span class="o"&gt;=&lt;/span&gt;fs0,mount_tag&lt;span class="o"&gt;=&lt;/span&gt;kernel_src &lt;span class="se"&gt;\&lt;/span&gt;
+  -display none &lt;span class="se"&gt;\&lt;/span&gt;
+  &lt;span class="nv"&gt;$QEMU_ARGS&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;These lines set up the networking:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;netdev&lt;/span&gt; &lt;span class="n"&gt;tap&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ifname&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;linux0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;script&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;no&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;downscript&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;no&lt;/span&gt; \
+  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;device&lt;/span&gt; &lt;span class="n"&gt;virtio&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;netdev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;net0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;mac&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;52&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;54&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;c0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ff&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;ee&lt;/span&gt; \
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;These lines set up console on &lt;code&gt;stdin&lt;/code&gt;/&lt;code&gt;stdout&lt;/code&gt; and multiplex the
+console with the qemu monitor:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;chardev&lt;/span&gt; &lt;span class="n"&gt;stdio&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;stdio&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;mux&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;on&lt;/span&gt; \
+  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;device&lt;/span&gt; &lt;span class="n"&gt;virtio&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;serial&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;pci&lt;/span&gt; \
+  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;device&lt;/span&gt; &lt;span class="n"&gt;virtconsole&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;chardev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;stdio&lt;/span&gt; \
+  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;mon&lt;/span&gt; &lt;span class="n"&gt;chardev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;stdio&lt;/span&gt; \
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;These lines set up access to the current working directory as a &lt;code&gt;9p&lt;/code&gt;
+filesystem:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fsdev&lt;/span&gt; &lt;span class="n"&gt;local&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;fs0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="n"&gt;PWD&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;security_model&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;none&lt;/span&gt; \
+  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;device&lt;/span&gt; &lt;span class="n"&gt;virtio&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;p&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;pci&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;fsdev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;fs0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;mount_tag&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;kernel_src&lt;/span&gt; \
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Within the qemu instance, this lets me access my working directory with:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;mount&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;t&lt;/span&gt; &lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;p&lt;/span&gt; &lt;span class="n"&gt;kernel_src&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;mnt&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The &lt;code&gt;$BOOT_ARGS&lt;/code&gt; and &lt;code&gt;$QEMU_ARGS&lt;/code&gt; in the script allow me to modify the
+behavior of the script by setting environment variables when calling
+it, like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;QEMU_ARGS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;-s&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;sh&lt;/span&gt; &lt;span class="n"&gt;boot&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;kernel&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;First boot&lt;/h3&gt;
+&lt;p&gt;I tried to boot the image using my existing kernel and initrd from
+&lt;code&gt;/boot&lt;/code&gt;, and ran into a problem:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;  &lt;span class="mf"&gt;184.060756&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="n"&gt;dracut&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;initqueue&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;218&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Warning&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Could&lt;/span&gt; &lt;span class="n"&gt;not&lt;/span&gt; &lt;span class="n"&gt;boot&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;  &lt;span class="mf"&gt;184.062855&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="n"&gt;dracut&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;initqueue&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;218&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Warning&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ssd&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt; &lt;span class="n"&gt;does&lt;/span&gt; &lt;span class="n"&gt;not&lt;/span&gt; &lt;span class="n"&gt;exist&lt;/span&gt;
+         &lt;span class="n"&gt;Starting&lt;/span&gt; &lt;span class="n"&gt;Dracut&lt;/span&gt; &lt;span class="n"&gt;Emergency&lt;/span&gt; &lt;span class="n"&gt;Shell&lt;/span&gt;&lt;span class="p"&gt;...&lt;/span&gt;
+&lt;span class="nl"&gt;Warning:&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ssd&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt; &lt;span class="n"&gt;does&lt;/span&gt; &lt;span class="n"&gt;not&lt;/span&gt; &lt;span class="n"&gt;exist&lt;/span&gt;
+
+&lt;span class="n"&gt;Generating&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;/run/initramfs/rdsosreport.txt&amp;quot;&lt;/span&gt;
+
+&lt;span class="n"&gt;Entering&lt;/span&gt; &lt;span class="n"&gt;emergency&lt;/span&gt; &lt;span class="n"&gt;mode&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt; &lt;span class="n"&gt;Exit&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;shell&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="k"&gt;continue&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The what now?  &lt;code&gt;/dev/ssd/root&lt;/code&gt; is the root device for my host system,
+but wasn't anywhere in the kernel command line I used when booting
+qemu.  It turns out that this was embedded in the initrd image in
+&lt;code&gt;/etc/cmdline.d/90lvm.conf&lt;/code&gt;.  After removing that file from the
+image...&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# mkdir initrd&lt;/span&gt;
+&lt;span class="c"&gt;# cd initrd&lt;/span&gt;
+&lt;span class="c"&gt;# zcat /boot/initramfs-3.15.6-200.fc20.x86_64.img | cpio -id&lt;/span&gt;
+&lt;span class="c"&gt;# rm -rf etc/cmdline.d&lt;/span&gt;
+&lt;span class="c"&gt;# find . -print | cpio -o -Hcrc | gzip &amp;gt; ../initrd.img&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;...I was able to boot successfully and log in.&lt;/p&gt;
+&lt;h3&gt;I bet you thought we were done!&lt;/h3&gt;
+&lt;p&gt;Modern systems are heavily modular.  Without access to a module tree
+matching the kernel, I would be unable to successfully boot the
+system, let alone use Docker.  Looking at which modules were loaded
+when I ran &lt;code&gt;docker&lt;/code&gt; with the above image, I set up a custom kernel
+configuration that would permit me to boot and run docker without
+requiring any loadable modules.  This would allow me to use the same
+image for each kernel without needing to re-populate it with modules
+each time I built a kernel.&lt;/p&gt;
+&lt;p&gt;The kernel configuration I ended up with is available &lt;a href="/assets/2014/07/21/kernel-config.txt"&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;h3&gt;Testing docker&lt;/h3&gt;
+&lt;p&gt;The last step in this process is putting together something that tests
+&lt;code&gt;docker&lt;/code&gt; and exposes the result of that test to the build environment.
+I added the following script to the image as &lt;code&gt;/root/docker-test&lt;/code&gt;:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt; 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+grep NO_DOCKER_TEST /proc/cmdline &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="nb"&gt;exit &lt;/span&gt;0
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;[&lt;/span&gt; -d /mnt/test_result &lt;span class="o"&gt;]&lt;/span&gt;; &lt;span class="k"&gt;then&lt;/span&gt;
+docker run --rm -i fedora sh -c &lt;span class="s1"&gt;&amp;#39;su -c true &amp;amp;&amp;amp; echo OKAY || echo FAILED&amp;#39;&lt;/span&gt; &lt;span class="se"&gt;\&lt;/span&gt;
+  &amp;gt; /mnt/test_result/stdout &lt;span class="se"&gt;\&lt;/span&gt;
+  2&amp;gt; /mnt/test_result/stderr
+poweroff
+&lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;This relies on the following entry in &lt;code&gt;/etc/fstab&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;kernel_src&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;mnt&lt;/span&gt; &lt;span class="mi"&gt;9&lt;/span&gt;&lt;span class="n"&gt;p&lt;/span&gt; &lt;span class="n"&gt;defaults&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;That mounts the build directory as a &lt;code&gt;9p&lt;/code&gt; filesystem on &lt;code&gt;/mnt&lt;/code&gt;.  This
+allows us to write out test results to, e.g.,
+&lt;code&gt;/mnt/test_result/stdout&lt;/code&gt; and have that appear in the &lt;code&gt;test_result&lt;/code&gt;
+directory inside the kernel source.&lt;/p&gt;
+&lt;p&gt;This script is run at the end of the boot process via an entry in
+&lt;code&gt;/etc/rc.d/rc.local&lt;/code&gt;:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt;1
+2
+3&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+sh /root/docker-test
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;Running the &lt;code&gt;boot-kernel&lt;/code&gt; script without additional configuration will
+cause the image to boot up, run the docker test, and then exit.&lt;/p&gt;
+&lt;h2&gt;Running git-bisect&lt;/h2&gt;
+&lt;p&gt;At this point we have just about everything we need to start running
+&lt;code&gt;git bisect&lt;/code&gt;.  For the initial run, I'm going to use git tag &lt;code&gt;v3.14&lt;/code&gt;
+as the "known good" commit and &lt;code&gt;v3.15&lt;/code&gt; as the "known bad" commit, so
+we start &lt;code&gt;git bisect&lt;/code&gt; like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;start&lt;/span&gt; &lt;span class="n"&gt;v3&lt;/span&gt;&lt;span class="mf"&gt;.15&lt;/span&gt; &lt;span class="n"&gt;v3&lt;/span&gt;&lt;span class="mf"&gt;.14&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Then we run &lt;code&gt;git bisect run sh bisect-test&lt;/code&gt;, where &lt;code&gt;bisect-test&lt;/code&gt; is
+the following shell script:&lt;/p&gt;
+&lt;table class="highlighttable"&gt;&lt;tr&gt;&lt;td class="linenos"&gt;&lt;div class="linenodiv"&gt;&lt;pre&gt; 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16&lt;/pre&gt;&lt;/div&gt;&lt;/td&gt;&lt;td class="code"&gt;&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#!/bin/sh&lt;/span&gt;
+
+&lt;span class="c"&gt;# Rebuild the kernel&lt;/span&gt;
+make olddefconfig
+make -j8
+
+&lt;span class="c"&gt;# Clear out old test results and run the test&lt;/span&gt;
+rm -f test_result/&lt;span class="o"&gt;{&lt;/span&gt;stdout,stderr&lt;span class="o"&gt;}&lt;/span&gt;
+sh boot-kernel
+
+&lt;span class="c"&gt;# Report results to git-bisect&lt;/span&gt;
+&lt;span class="k"&gt;if &lt;/span&gt;grep OKAY test_result/stdout; &lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="k"&gt;  &lt;/span&gt;&lt;span class="nb"&gt;exit &lt;/span&gt;0
+&lt;span class="k"&gt;else&lt;/span&gt;
+&lt;span class="k"&gt;  &lt;/span&gt;&lt;span class="nb"&gt;exit &lt;/span&gt;1
+&lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+
+&lt;p&gt;...and then we go out for a cup of coffee or something, because that's
+going to take a while.&lt;/p&gt;
+&lt;h2&gt;Keep digging, Watson&lt;/h2&gt;
+&lt;p&gt;The initial run of &lt;code&gt;git bisect&lt;/code&gt; narrowed the change down to the
+&lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=b7d3622"&gt;following commit&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;commit&lt;/span&gt; &lt;span class="n"&gt;b7d3622a39fde7658170b7f3cf6c6889bb8db30d&lt;/span&gt;
+&lt;span class="nl"&gt;Merge:&lt;/span&gt; &lt;span class="n"&gt;f3411cb&lt;/span&gt; &lt;span class="n"&gt;d8ec26d&lt;/span&gt;
+&lt;span class="nl"&gt;Author:&lt;/span&gt; &lt;span class="n"&gt;Eric&lt;/span&gt; &lt;span class="n"&gt;Paris&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;eparis&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;redhat&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;span class="nl"&gt;Date:&lt;/span&gt;   &lt;span class="n"&gt;Fri&lt;/span&gt; &lt;span class="n"&gt;Mar&lt;/span&gt; &lt;span class="mi"&gt;7&lt;/span&gt; &lt;span class="mi"&gt;11&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;41&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;32&lt;/span&gt; &lt;span class="mi"&gt;2014&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0500&lt;/span&gt;
+
+    &lt;span class="n"&gt;Merge&lt;/span&gt; &lt;span class="n"&gt;tag&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;v3&lt;/span&gt;&lt;span class="mf"&gt;.13&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;into&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;3.15&lt;/span&gt;
+
+    &lt;span class="n"&gt;Linux&lt;/span&gt; &lt;span class="mf"&gt;3.13&lt;/span&gt;
+
+    &lt;span class="nl"&gt;Conflicts:&lt;/span&gt;
+        &lt;span class="n"&gt;include&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;net&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;xfrm&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;h&lt;/span&gt;
+
+    &lt;span class="n"&gt;Simple&lt;/span&gt; &lt;span class="n"&gt;merge&lt;/span&gt; &lt;span class="n"&gt;where&lt;/span&gt; &lt;span class="n"&gt;v3&lt;/span&gt;&lt;span class="mf"&gt;.13&lt;/span&gt; &lt;span class="n"&gt;removed&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="k"&gt;extern&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;from&lt;/span&gt; &lt;span class="n"&gt;definitions&lt;/span&gt; &lt;span class="n"&gt;and&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;
+    &lt;span class="n"&gt;tree&lt;/span&gt; &lt;span class="n"&gt;did&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;u32&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="kt"&gt;unsigned&lt;/span&gt; &lt;span class="kt"&gt;int&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;same&lt;/span&gt; &lt;span class="n"&gt;definitions&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;As you can see (from the &lt;code&gt;Merge:&lt;/code&gt; header), this is a merge commit, in
+which an entire set of changes was joined into the &lt;code&gt;master&lt;/code&gt; branch.
+So while this commit is technically the first commit in which this
+problem appears in the &lt;code&gt;master&lt;/code&gt; branch...it is not actually the commit
+that introduced the problem.&lt;/p&gt;
+&lt;p&gt;I was in luck, though, because looking at the history for the left
+side of this branch (starting with &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=f3411cb"&gt;f3411cb&lt;/a&gt;) showed a series of
+patches to the audit subsystem:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;log&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;oneline&lt;/span&gt; &lt;span class="n"&gt;f3411cb&lt;/span&gt;
+&lt;span class="n"&gt;f3411cb&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;whitespace&lt;/span&gt; &lt;span class="n"&gt;fix&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;kernel&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;parameters&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;txt&lt;/span&gt;
+&lt;span class="mi"&gt;8626877&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;fix&lt;/span&gt; &lt;span class="n"&gt;location&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;__net_initdata&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;audit_net_ops&lt;/span&gt;
+&lt;span class="mf"&gt;4f&lt;/span&gt;&lt;span class="mo"&gt;06632&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;remove&lt;/span&gt; &lt;span class="n"&gt;pr_info&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;every&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt; &lt;span class="n"&gt;namespace&lt;/span&gt;
+&lt;span class="mf"&gt;262f&lt;/span&gt;&lt;span class="n"&gt;d3a&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Modify&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="n"&gt;set&lt;/span&gt; &lt;span class="n"&gt;of&lt;/span&gt; &lt;span class="n"&gt;system&lt;/span&gt; &lt;span class="n"&gt;calls&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt; &lt;span class="n"&gt;class&lt;/span&gt; &lt;span class="n"&gt;definitions&lt;/span&gt;
+&lt;span class="mf"&gt;3e1&lt;/span&gt;&lt;span class="n"&gt;d0bb&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Convert&lt;/span&gt; &lt;span class="kt"&gt;int&lt;/span&gt; &lt;span class="n"&gt;limit&lt;/span&gt; &lt;span class="n"&gt;uses&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;u32&lt;/span&gt;
+&lt;span class="n"&gt;d957f7b&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Use&lt;/span&gt; &lt;span class="n"&gt;more&lt;/span&gt; &lt;span class="n"&gt;current&lt;/span&gt; &lt;span class="n"&gt;logging&lt;/span&gt; &lt;span class="n"&gt;style&lt;/span&gt;
+&lt;span class="n"&gt;b8dbc32&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Use&lt;/span&gt; &lt;span class="n"&gt;hex_byte_pack_upper&lt;/span&gt;
+&lt;span class="mo"&gt;06&lt;/span&gt;&lt;span class="n"&gt;bdadd&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;correct&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt; &lt;span class="n"&gt;mismatch&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;audit_syscall_exit&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="n"&gt;ce319f&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;reorder&lt;/span&gt; &lt;span class="n"&gt;AUDIT_TTY_SET&lt;/span&gt; &lt;span class="n"&gt;arguments&lt;/span&gt;
+&lt;span class="mf"&gt;0e23&lt;/span&gt;&lt;span class="n"&gt;bac&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;rework&lt;/span&gt; &lt;span class="n"&gt;AUDIT_TTY_SET&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;only&lt;/span&gt; &lt;span class="n"&gt;grab&lt;/span&gt; &lt;span class="n"&gt;spin_lock&lt;/span&gt; &lt;span class="n"&gt;once&lt;/span&gt;
+&lt;span class="mf"&gt;3f&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="n"&gt;c5fa&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;remove&lt;/span&gt; &lt;span class="n"&gt;needless&lt;/span&gt; &lt;span class="k"&gt;switch&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;AUDIT_SET&lt;/span&gt;
+&lt;span class="mi"&gt;70249&lt;/span&gt;&lt;span class="n"&gt;a9&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;use&lt;/span&gt; &lt;span class="n"&gt;define&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt; &lt;span class="n"&gt;version&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;...etc.&lt;/p&gt;
+&lt;p&gt;I picked as a starting point the merge commit previous to &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=f3411cb"&gt;f3411cb&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;log&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;merges&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;
+&lt;span class="n"&gt;commit&lt;/span&gt; &lt;span class="n"&gt;fc582aef7dcc27a7120cf232c1e76c569c7b6eab&lt;/span&gt;
+&lt;span class="nl"&gt;Merge:&lt;/span&gt; &lt;span class="mi"&gt;9175&lt;/span&gt;&lt;span class="n"&gt;c9d&lt;/span&gt; &lt;span class="mf"&gt;5e01&lt;/span&gt;&lt;span class="n"&gt;dc7&lt;/span&gt;
+&lt;span class="nl"&gt;Author:&lt;/span&gt; &lt;span class="n"&gt;Eric&lt;/span&gt; &lt;span class="n"&gt;Paris&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;eparis&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;redhat&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;span class="nl"&gt;Date:&lt;/span&gt;   &lt;span class="n"&gt;Fri&lt;/span&gt; &lt;span class="n"&gt;Nov&lt;/span&gt; &lt;span class="mi"&gt;22&lt;/span&gt; &lt;span class="mi"&gt;18&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;57&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;08&lt;/span&gt; &lt;span class="mi"&gt;2013&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0500&lt;/span&gt;
+
+    &lt;span class="n"&gt;Merge&lt;/span&gt; &lt;span class="n"&gt;tag&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;v3&lt;/span&gt;&lt;span class="mf"&gt;.12&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+
+    &lt;span class="n"&gt;Linux&lt;/span&gt; &lt;span class="mf"&gt;3.12&lt;/span&gt;
+
+    &lt;span class="nl"&gt;Conflicts:&lt;/span&gt;
+        &lt;span class="n"&gt;fs&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;exec&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And ran &lt;code&gt;git bisect&lt;/code&gt; again from &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=fc582ae"&gt;that commit&lt;/a&gt; through to &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=f3411cb"&gt;f3411cb&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;start&lt;/span&gt; &lt;span class="n"&gt;f3411cb&lt;/span&gt; &lt;span class="n"&gt;fc582ae&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;run&lt;/span&gt; &lt;span class="n"&gt;sh&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;test&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Which ultimately ended up with &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7"&gt;this commit&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="mf"&gt;33f&lt;/span&gt;&lt;span class="n"&gt;aba7fa7f2288d2f8aaea95958b2c97bf9ebfb&lt;/span&gt; &lt;span class="n"&gt;is&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;first&lt;/span&gt; &lt;span class="n"&gt;bad&lt;/span&gt; &lt;span class="n"&gt;commit&lt;/span&gt;
+&lt;span class="n"&gt;commit&lt;/span&gt; &lt;span class="mf"&gt;33f&lt;/span&gt;&lt;span class="n"&gt;aba7fa7f2288d2f8aaea95958b2c97bf9ebfb&lt;/span&gt;
+&lt;span class="nl"&gt;Author:&lt;/span&gt; &lt;span class="n"&gt;Richard&lt;/span&gt; &lt;span class="n"&gt;Guy&lt;/span&gt; &lt;span class="n"&gt;Briggs&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;rgb&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;redhat&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;span class="nl"&gt;Date:&lt;/span&gt;   &lt;span class="n"&gt;Tue&lt;/span&gt; &lt;span class="n"&gt;Jul&lt;/span&gt; &lt;span class="mi"&gt;16&lt;/span&gt; &lt;span class="mi"&gt;13&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;18&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;45&lt;/span&gt; &lt;span class="mi"&gt;2013&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mo"&gt;0400&lt;/span&gt;
+
+    &lt;span class="nl"&gt;audit:&lt;/span&gt; &lt;span class="n"&gt;listen&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;all&lt;/span&gt; &lt;span class="n"&gt;network&lt;/span&gt; &lt;span class="n"&gt;namespaces&lt;/span&gt;
+
+    &lt;span class="n"&gt;Convert&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt; &lt;span class="n"&gt;from&lt;/span&gt; &lt;span class="n"&gt;only&lt;/span&gt; &lt;span class="n"&gt;listening&lt;/span&gt; &lt;span class="n"&gt;in&lt;/span&gt; &lt;span class="n"&gt;init_net&lt;/span&gt; &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;use&lt;/span&gt; &lt;span class="n"&gt;register_pernet_subsys&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="n"&gt;to&lt;/span&gt; &lt;span class="n"&gt;dynamically&lt;/span&gt; &lt;span class="n"&gt;manage&lt;/span&gt; &lt;span class="n"&gt;the&lt;/span&gt; &lt;span class="n"&gt;netlink&lt;/span&gt; &lt;span class="n"&gt;socket&lt;/span&gt; &lt;span class="n"&gt;list&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+
+    &lt;span class="n"&gt;Signed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;by&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Richard&lt;/span&gt; &lt;span class="n"&gt;Guy&lt;/span&gt; &lt;span class="n"&gt;Briggs&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;rgb&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;redhat&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class="n"&gt;Signed&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;by&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Eric&lt;/span&gt; &lt;span class="n"&gt;Paris&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;eparis&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;redhat&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Running &lt;code&gt;git bisect log&lt;/code&gt; shows us what revisions were checked as part
+of this process:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# bad: [f3411cb2b2e396a41ed3a439863f028db7140a34] audit: whitespace fix in kernel-parameters.txt&lt;/span&gt;
+&lt;span class="cp"&gt;# good: [fc582aef7dcc27a7120cf232c1e76c569c7b6eab] Merge tag &amp;#39;v3.12&amp;#39;&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;start&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;f3411cb&lt;/span&gt;&lt;span class="sc"&gt;&amp;#39; &amp;#39;&lt;/span&gt;&lt;span class="n"&gt;fc582ae&lt;/span&gt;&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="cp"&gt;# bad: [ff235f51a138fc61e1a22dcb8b072d9c78c2a8cc] audit: Added exe field to audit core dump signal log&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;bad&lt;/span&gt; &lt;span class="n"&gt;ff235f51a138fc61e1a22dcb8b072d9c78c2a8cc&lt;/span&gt;
+&lt;span class="cp"&gt;# bad: [51cc83f024ee51de9da70c17e01ec6de524f5906] audit: add audit_backlog_wait_time configuration option&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;bad&lt;/span&gt; &lt;span class="mi"&gt;51&lt;/span&gt;&lt;span class="n"&gt;cc83f024ee51de9da70c17e01ec6de524f5906&lt;/span&gt;
+&lt;span class="cp"&gt;# bad: [ae887e0bdcddb9d7acd8f1eb7b7795b438aa4950] audit: make use of remaining sleep time from wait_for_auditd&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;bad&lt;/span&gt; &lt;span class="n"&gt;ae887e0bdcddb9d7acd8f1eb7b7795b438aa4950&lt;/span&gt;
+&lt;span class="cp"&gt;# good: [2f2ad1013322c8f6c40fc6dafdbd32442fa730ad] audit: restore order of tty and ses fields in log output&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;good&lt;/span&gt; &lt;span class="mf"&gt;2f&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="n"&gt;ad1013322c8f6c40fc6dafdbd32442fa730ad&lt;/span&gt;
+&lt;span class="cp"&gt;# bad: [e789e561a50de0aaa8c695662d97aaa5eac9d55f] audit: reset audit backlog wait time after error recovery&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;bad&lt;/span&gt; &lt;span class="n"&gt;e789e561a50de0aaa8c695662d97aaa5eac9d55f&lt;/span&gt;
+&lt;span class="cp"&gt;# bad: [33faba7fa7f2288d2f8aaea95958b2c97bf9ebfb] audit: listen in all network namespaces&lt;/span&gt;
+&lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;bisect&lt;/span&gt; &lt;span class="n"&gt;bad&lt;/span&gt; &lt;span class="mf"&gt;33f&lt;/span&gt;&lt;span class="n"&gt;aba7fa7f2288d2f8aaea95958b2c97bf9ebfb&lt;/span&gt;
+&lt;span class="cp"&gt;# first bad commit: [33faba7fa7f2288d2f8aaea95958b2c97bf9ebfb] audit: listen in all network namespaces&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The commit found by &lt;code&gt;git bisect&lt;/code&gt; seems like a reasonable candidate;
+it's a patch against the audit subsystem and has something to do with
+namespaces, which are central to Docker's proper operation.&lt;/p&gt;
+&lt;h2&gt;Debugging the problem&lt;/h2&gt;
+&lt;p&gt;We can boot the kernel built from 33faba7 with the &lt;code&gt;boot-kernel&lt;/code&gt;
+script, adding the &lt;code&gt;-s&lt;/code&gt; argument to qemu to start a &lt;code&gt;gdbserver&lt;/code&gt; on
+port &lt;code&gt;1234&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;sh&lt;/span&gt; &lt;span class="n"&gt;BOOT_ARGS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NO_DOCKER_TEST&lt;/span&gt; &lt;span class="n"&gt;QEMU_ARGS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;-s&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;boot&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;kernel&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;blockquote&gt;
+&lt;p&gt;A caveat about attaching to qemu with gdb: qemu has a &lt;code&gt;-S&lt;/code&gt; option
+that will cause the virtual machine to halt at startup, such that
+you can attach before it starts booting and -- in theory -- set
+breakpoints in the early boot process.  In practice this doesn't
+work well at all (possibly because the vm switches from 32- to
+64-bit operation during the boot process, which makes gdb unhappy).
+You're better off attaching after the kernel has booted.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;In another window, we attach &lt;code&gt;gdb&lt;/code&gt; to the running &lt;code&gt;qemu&lt;/code&gt; process:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;gdb&lt;/span&gt; &lt;span class="n"&gt;vmlinux&lt;/span&gt;
+&lt;span class="n"&gt;Reading&lt;/span&gt; &lt;span class="n"&gt;symbols&lt;/span&gt; &lt;span class="n"&gt;from&lt;/span&gt; &lt;span class="n"&gt;vmlinux&lt;/span&gt;&lt;span class="p"&gt;...&lt;/span&gt;&lt;span class="n"&gt;done&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gdb&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;target&lt;/span&gt; &lt;span class="n"&gt;remote&lt;/span&gt; &lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1234&lt;/span&gt;
+&lt;span class="n"&gt;Remote&lt;/span&gt; &lt;span class="n"&gt;debugging&lt;/span&gt; &lt;span class="n"&gt;using&lt;/span&gt; &lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1234&lt;/span&gt;
+&lt;span class="n"&gt;native_safe_halt&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="n"&gt;at&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;home&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;src&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;linux&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;arch&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;x86&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;include&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;asm&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;irqflags&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;h&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;50&lt;/span&gt;
+&lt;span class="mi"&gt;50&lt;/span&gt;  &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gdb&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;I know we're getting the &lt;code&gt;EPERM&lt;/code&gt; in response to sending audit
+messages.  Looking through the code in &lt;code&gt;kernel/audit.c&lt;/code&gt;, the
+&lt;code&gt;audit_receive_msg&lt;/code&gt; seems like a reasonable place to start poking
+about.  At the beginning of &lt;code&gt;audit_receive_msg&lt;/code&gt;, I see the following
+code:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;err&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;audit_netlink_ok&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;skb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;msg_type&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;err&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+  &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;err&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So let's set a breakpoint there if &lt;code&gt;audit_netlink_ok()&lt;/code&gt; returns an
+error:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gdb&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;br&lt;/span&gt; &lt;span class="n"&gt;kernel&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;752&lt;/span&gt; &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;err&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And let our qemu process continue running:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gdb&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="k"&gt;continue&lt;/span&gt;
+&lt;span class="n"&gt;Continuing&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Inside the qemu instance I start docker:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;bash&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;4.2&lt;/span&gt;&lt;span class="err"&gt;#&lt;/span&gt; &lt;span class="n"&gt;docker&lt;/span&gt; &lt;span class="n"&gt;run&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;it&lt;/span&gt; &lt;span class="n"&gt;fedora&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;su&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="n"&gt;uptime&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And eventually &lt;code&gt;gdb&lt;/code&gt; hits the breakpoint:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;Breakpoint&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;audit_receive_msg&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;nlh&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0xffff88003819a400&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; 
+    &lt;span class="n"&gt;skb&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0xffff880038044300&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;at&lt;/span&gt; &lt;span class="n"&gt;kernel&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;752&lt;/span&gt;
+&lt;span class="mi"&gt;752&lt;/span&gt;     &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;err&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If I look at the value of &lt;code&gt;err&lt;/code&gt; at this point:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gdb&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;print&lt;/span&gt; &lt;span class="n"&gt;err&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;That it is, in fact, &lt;code&gt;-EPERM&lt;/code&gt;, which suggests we're on the right
+track.  Taking a closer look at &lt;code&gt;audit_netlink_ok()&lt;/code&gt;, it's obvious
+that there are only three places where it can return &lt;code&gt;-EPERM&lt;/code&gt;.  I
+tried setting some breakpoint in this function but they weren't
+working correctly, probably due to to optimizations performed when
+compiling the kernel.  So instead of &lt;code&gt;gdb&lt;/code&gt;, in this step we just add a
+bunch of &lt;code&gt;pr_err()&lt;/code&gt; statements to print out debugging information on
+the console:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;((&lt;/span&gt;&lt;span class="n"&gt;current_user_ns&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;init_user_ns&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;||&lt;/span&gt;
+    &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;task_active_pid_ns&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;current&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;init_pid_ns&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;currnet_user_ns() check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+  &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;EPERM&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_MAKE_EQUIV&lt;/span&gt;:
+  &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="n"&gt;capable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;CAP_AUDIT_CONTROL&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;CAP_AUDIT_CONTROL check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;err&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;EPERM&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+  &lt;span class="p"&gt;}&lt;/span&gt;
+  &lt;span class="k"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_USER&lt;/span&gt;:
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_FIRST_USER_MSG&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt; &lt;span class="n"&gt;AUDIT_LAST_USER_MSG&lt;/span&gt;:
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_FIRST_USER_MSG2&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt; &lt;span class="n"&gt;AUDIT_LAST_USER_MSG2&lt;/span&gt;:
+  &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="n"&gt;capable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;CAP_AUDIT_WRITE&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;CAP_AUDIT_WRITE check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;err&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;EPERM&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+  &lt;span class="p"&gt;}&lt;/span&gt;
+  &lt;span class="k"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With these in place, if I run the &lt;code&gt;docker&lt;/code&gt; command again I see:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;   &lt;span class="mf"&gt;12.239860&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="n"&gt;currnet_user_ns&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="n"&gt;check&lt;/span&gt; &lt;span class="n"&gt;failed&lt;/span&gt;
+&lt;span class="nl"&gt;su:&lt;/span&gt; &lt;span class="n"&gt;System&lt;/span&gt; &lt;span class="n"&gt;error&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;It looks like we've found out where it's failing!  Of course, we're
+checking code right now that is several commits behind v3.15, so let's
+take a look the same function in the 3.15 release:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;checkout&lt;/span&gt; &lt;span class="n"&gt;v3&lt;/span&gt;&lt;span class="mf"&gt;.15&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Looking at &lt;code&gt;audit_netlink_ok&lt;/code&gt; in &lt;code&gt;kernel/audit.c&lt;/code&gt;, it looks as if that
+initial check has changed:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="cm"&gt;/* Only support initial user namespace for now. */&lt;/span&gt;
+    &lt;span class="cm"&gt;/*&lt;/span&gt;
+&lt;span class="cm"&gt;     * We return ECONNREFUSED because it tricks userspace into thinking&lt;/span&gt;
+&lt;span class="cm"&gt;     * that audit was not configured into the kernel.  Lots of users&lt;/span&gt;
+&lt;span class="cm"&gt;     * configure their PAM stack (because that&amp;#39;s what the distro does)&lt;/span&gt;
+&lt;span class="cm"&gt;     * to reject login if unable to send messages to audit.  If we return&lt;/span&gt;
+&lt;span class="cm"&gt;     * ECONNREFUSED the PAM stack thinks the kernel does not have audit&lt;/span&gt;
+&lt;span class="cm"&gt;     * configured in and will let login proceed.  If we return EPERM&lt;/span&gt;
+&lt;span class="cm"&gt;     * userspace will reject all logins.  This should be removed when we&lt;/span&gt;
+&lt;span class="cm"&gt;     * support non init namespaces!!&lt;/span&gt;
+&lt;span class="cm"&gt;     */&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;current_user_ns&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;init_user_ns&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ECONNREFUSED&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So let's insert our print statements into this version of the code and
+see if we get the same behavior:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;current_user_ns&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;init_user_ns&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+  &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;current_user-ns() check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+  &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;ECONNREFUSED&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_MAKE_EQUIV&lt;/span&gt;:
+  &lt;span class="cm"&gt;/* Only support auditd and auditctl in initial pid namespace&lt;/span&gt;
+&lt;span class="cm"&gt;   * for now. */&lt;/span&gt;
+  &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;((&lt;/span&gt;&lt;span class="n"&gt;task_active_pid_ns&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;current&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;init_pid_ns&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;init_pid_ns check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;EPERM&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+  &lt;span class="p"&gt;}&lt;/span&gt;
+
+  &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="n"&gt;netlink_capable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;skb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;CAP_AUDIT_CONTROL&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;CAP_AUDIT_CONTROL check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;err&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;EPERM&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+  &lt;span class="p"&gt;}&lt;/span&gt;
+  &lt;span class="k"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_USER&lt;/span&gt;:
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_FIRST_USER_MSG&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt; &lt;span class="n"&gt;AUDIT_LAST_USER_MSG&lt;/span&gt;:
+&lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="n"&gt;AUDIT_FIRST_USER_MSG2&lt;/span&gt; &lt;span class="p"&gt;...&lt;/span&gt; &lt;span class="n"&gt;AUDIT_LAST_USER_MSG2&lt;/span&gt;:
+  &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="n"&gt;netlink_capable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;skb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;CAP_AUDIT_WRITE&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;pr_err&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;CAP_AUDIT_WRITE check failed&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;err&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;EPERM&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+  &lt;span class="p"&gt;}&lt;/span&gt;
+  &lt;span class="k"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Running the v3.15 kernel, I see:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;   &lt;span class="mf"&gt;26.273992&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="n"&gt;audit&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;CAP_AUDIT_WRITE&lt;/span&gt; &lt;span class="n"&gt;check&lt;/span&gt; &lt;span class="n"&gt;failed&lt;/span&gt;
+&lt;span class="nl"&gt;su:&lt;/span&gt; &lt;span class="n"&gt;System&lt;/span&gt; &lt;span class="n"&gt;error&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So it looks like the intial failure in &lt;code&gt;audit_netlink_ok()&lt;/code&gt; was fixed,
+but we're stilling failing the &lt;code&gt;CAP_AUDIT_WRITE&lt;/code&gt; check.&lt;/p&gt;
+&lt;h3&gt;Summary&lt;/h3&gt;
+&lt;p&gt;What's going on here?&lt;/p&gt;
+&lt;p&gt;Prior to &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7"&gt;33faba7&lt;/a&gt;, audit messages were only accepted in the main
+network namespace.  Inside other network namespaces, processes sending
+audit messages would simply receive &lt;code&gt;ECONNREFUSED&lt;/code&gt;.  For example, this
+is the result of using &lt;code&gt;strace&lt;/code&gt; on that &lt;code&gt;docker run&lt;/code&gt; command in a
+pre-&lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7"&gt;33faba7&lt;/a&gt; kernel:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="mi"&gt;539&lt;/span&gt;   &lt;span class="n"&gt;sendto&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;...authentication acct=&lt;/span&gt;&lt;span class="se"&gt;\&amp;quot;&lt;/span&gt;&lt;span class="s"&gt;root&lt;/span&gt;&lt;span class="se"&gt;\&amp;quot;&lt;/span&gt;&lt;span class="s"&gt; exe=&lt;/span&gt;&lt;span class="se"&gt;\&amp;quot;&lt;/span&gt;&lt;span class="s"&gt;/usr/bin/su&lt;/span&gt;&lt;span class="se"&gt;\&amp;quot;&lt;/span&gt;&lt;span class="s"&gt; hostname=? a&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;...,&lt;/span&gt;
+      &lt;span class="mi"&gt;112&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="n"&gt;sa_family&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;AF_NETLINK&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;pid&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;00000000&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt; &lt;span class="mi"&gt;12&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;ECONNREFUSED&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Connection&lt;/span&gt; &lt;span class="n"&gt;refused&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With &lt;a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=33faba7"&gt;33faba7&lt;/a&gt;, audit messages are now accepted inside network
+namespaces. This means that instead of simply getting &lt;code&gt;ECONNREFUSED&lt;/code&gt;,
+messages must pass the kernel capability check.  I spoke with some of
+the audit subsystem maintainers (including Richard Guy Briggs, the
+author of this patch series), and the general consensus is that "if
+you want to write audit messages you need &lt;code&gt;CAP_AUDIT_WRITE&lt;/code&gt;".&lt;/p&gt;
+&lt;p&gt;So while this patch did change the behavior of the kernel from the
+perspective of container tools such as Docker, the fix needs to be in
+the tool creating the namespaces.&lt;/p&gt;
+&lt;h2&gt;Results&lt;/h2&gt;
+&lt;p&gt;This issue was reported against Fedora in &lt;a href="https://bugzilla.redhat.com/show_bug.cgi?id=1121345"&gt;BZ 1121345&lt;/a&gt; and &lt;a href="https://bugzilla.redhat.com/show_bug.cgi?id=1119849"&gt;BZ
+1119849&lt;/a&gt;.  This issue was also reported against Docker in &lt;a href="https://github.com/dotcloud/docker/issues/6345"&gt;GHI 6345&lt;/a&gt;
+and &lt;a href="https://github.com/dotcloud/docker/issues/7123"&gt;GHI 7123&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;This problem has been corrected upstream in &lt;a href="https://github.com/dotcloud/docker/pull/7179"&gt;PR 7179&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Package &lt;a href="https://admin.fedoraproject.org/updates/FEDORA-2014-8877/docker-io-1.0.0-9.fc20"&gt;docker-io-1.0.0-9.fc20&lt;/a&gt;, which includes
+the above fix, is now available for Fedora 20 (and Fedora 19).&lt;/p&gt;</summary><category term="docker"></category><category term="kernel"></category><category term="git"></category></entry></feed>

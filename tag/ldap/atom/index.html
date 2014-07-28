@@ -1,0 +1,561 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/ldap/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2013-07-22T00:00:00-04:00</updated><entry><title>Generating a memberOf attribute for posixGroups</title><link href="http://blog-beta.oddbit.com/2013/07/22/generating-a-membero/" rel="alternate"></link><updated>2013-07-22T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2013-07-22:2013/07/22/generating-a-membero/</id><summary type="html">&lt;p&gt;This showed up on &lt;a href="https://wiki.openstack.org/wiki/IRC"&gt;#openstack&lt;/a&gt; earlier today:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="mi"&gt;2013&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;07&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mi"&gt;22&lt;/span&gt;&lt;span class="nx"&gt;T13&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;56&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;  &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nx"&gt;m0zes&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="nx"&gt;hello&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="kc"&gt;all&lt;/span&gt;&lt;span class="nx"&gt;.&lt;/span&gt; &lt;span class="nx"&gt;I&lt;/span&gt; &lt;span class="nb"&gt;am&lt;/span&gt; &lt;span class="nx"&gt;looking&lt;/span&gt; &lt;span class="k"&gt;to&lt;/span&gt;
+&lt;span class="nx"&gt;setup&lt;/span&gt; &lt;span class="nx"&gt;keystone&lt;/span&gt; &lt;span class="k"&gt;with&lt;/span&gt; &lt;span class="nx"&gt;an&lt;/span&gt; &lt;span class="nb"&gt;ldap&lt;/span&gt; &lt;span class="nx"&gt;backend.&lt;/span&gt; &lt;span class="nx"&gt;I&lt;/span&gt; &lt;span class="nx"&gt;need&lt;/span&gt; &lt;span class="k"&gt;to&lt;/span&gt; &lt;span class="nx"&gt;filter&lt;/span&gt;
+&lt;span class="nx"&gt;users&lt;/span&gt; &lt;span class="nx"&gt;based&lt;/span&gt; &lt;span class="k"&gt;on&lt;/span&gt; &lt;span class="k"&gt;group&lt;/span&gt; &lt;span class="nx"&gt;membership&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="k"&gt;in&lt;/span&gt; &lt;span class="nx"&gt;this&lt;/span&gt; &lt;span class="k"&gt;case&lt;/span&gt; &lt;span class="nx"&gt;a&lt;/span&gt;
+&lt;span class="nx"&gt;non&lt;/span&gt;&lt;span class="na"&gt;-rfc2307&lt;/span&gt; &lt;span class="nx"&gt;posixGroup.&lt;/span&gt; &lt;span class="nx"&gt;This&lt;/span&gt; &lt;span class="nx"&gt;means&lt;/span&gt; &lt;span class="nx"&gt;that&lt;/span&gt; &lt;span class="nx"&gt;memberOf&lt;/span&gt; &lt;span class="nx"&gt;doesn&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;t&lt;/span&gt;
+&lt;span class="s1"&gt;show up, and that the memberUid in the group is not a&lt;/span&gt;
+&lt;span class="s1"&gt;dn. any thoughts on how to accomplish this?&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;It turns out that this is a not uncommon question, so I spent some
+time today working out a solution using the &lt;a href="http://www.openldap.org/faq/data/cache/1209.html"&gt;dynlist&lt;/a&gt; overlay for
+&lt;a href="http://www.openldap.org/"&gt;OpenLDAP&lt;/a&gt;.&lt;/p&gt;
+&lt;!-- more --&gt;
+
+&lt;p&gt;The LDIF data presented in this article can be found &lt;a href="https://github.com/larsks/blog-openldap-dynlist"&gt;on github&lt;/a&gt;.&lt;/p&gt;
+&lt;h2&gt;Assumptions&lt;/h2&gt;
+&lt;p&gt;I'm assuming that you have a traditional &lt;code&gt;posixGroup&lt;/code&gt; that looks
+something like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;posixGroup&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+&lt;span class="n"&gt;gidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1000&lt;/span&gt;
+&lt;span class="n"&gt;memberUid&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;That is, members are recorded in the &lt;code&gt;memberUid&lt;/code&gt; attribute which
+corresponds to the &lt;code&gt;uidNumber&lt;/code&gt; attribute of a user object.&lt;/p&gt;
+&lt;h2&gt;Loading the dynlist module&lt;/h2&gt;
+&lt;p&gt;This solution makes use of the &lt;code&gt;dynlist&lt;/code&gt; dynamic overlay, so you'll
+first need to make sure that module is loaded.  Most modern OpenLDAP
+deployments make use of the new &lt;code&gt;slapd.d&lt;/code&gt; configuration directory,
+which means you'll modify your configuration by loading the following
+LDIF file:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;modules&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;olcModuleList&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;modules&lt;/span&gt;
+&lt;span class="n"&gt;olcModuleLoad&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;dynlist&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You would load this into your running instance with something like the
+following:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# ldapadd -Y EXTERNAL -H ldapi://%2fvar%2frun%2fldapi -f dynlist.ldif&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This makes certain assumptions about how your permissions are
+configured (in particular, it assumes that your server is configured
+to permit administrative access to system UID 0 when accessing the
+&lt;code&gt;ldapi&lt;/code&gt; socket).&lt;/p&gt;
+&lt;p&gt;If you already have a &lt;code&gt;cn=modules{0},cn=config&lt;/code&gt; object, you'll need to
+modify instead using the following:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;modules&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;
+&lt;span class="n"&gt;changetype&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;modify&lt;/span&gt;
+&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;olcModuleLoad&lt;/span&gt;
+&lt;span class="n"&gt;olcModuleLoad&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;dynlist&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And use &lt;code&gt;ldapmodify&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# ldapmodify -Y EXTERNAL -H ldapi://%2fvar%2frun%2fldapi -f dynlist.ldif&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Schema modifications&lt;/h2&gt;
+&lt;p&gt;In an ideal world, we would be able to make our solution populate the
+standard &lt;code&gt;memberOf&lt;/code&gt; attribute.  Unfortunately, this is an
+"operational" attribute in OpenLDAP, which means we can't make it
+available to a user class...so, we're going to define (a) a new
+&lt;code&gt;attributeType&lt;/code&gt; that is largely identical to the &lt;code&gt;memberOf&lt;/code&gt; attribute,
+and (b) a new auxiliary object class that allows the new attribute.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;schema&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;olcSchemaConfig&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;oddbit&lt;/span&gt;
+&lt;span class="n"&gt;olcAttributeTypes&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt; &lt;span class="mf"&gt;1.3&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;6.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;4.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;24441.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;1.1&lt;/span&gt; 
+ &lt;span class="n"&gt;NAME&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;obMemberOf&amp;#39;&lt;/span&gt; 
+ &lt;span class="n"&gt;DESC&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;Distinguished name of a group of which the object is a member&amp;#39;&lt;/span&gt; 
+ &lt;span class="n"&gt;EQUALITY&lt;/span&gt; &lt;span class="n"&gt;distinguishedNameMatch&lt;/span&gt; 
+ &lt;span class="n"&gt;SYNTAX&lt;/span&gt; &lt;span class="mf"&gt;1.3&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;6.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;4.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;1466.115&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;121.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt; &lt;span class="o"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;olcObjectClasses&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt; &lt;span class="mf"&gt;1.3&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;6.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;4.1&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;24441.2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="mf"&gt;1.1&lt;/span&gt; 
+ &lt;span class="n"&gt;NAME&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;obPerson&amp;#39;&lt;/span&gt; &lt;span class="n"&gt;DESC&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;oddbit.com person&amp;#39;&lt;/span&gt; 
+ &lt;span class="n"&gt;AUXILIARY&lt;/span&gt; &lt;span class="n"&gt;MAY&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt; &lt;span class="n"&gt;obMemberOf&lt;/span&gt; &lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="o"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This gives us the &lt;code&gt;obMemberOf&lt;/code&gt; attribute and the &lt;code&gt;obPerson&lt;/code&gt; object
+class.  &lt;strong&gt;NOTE&lt;/strong&gt;: the OIDs I'm using here are using my own
+IANA-assigned OID prefix.  You should replace &lt;code&gt;1.3.6.1.4.1.24441&lt;/code&gt; with
+your own OID prefix.  If you don't have one (and you're sure your
+organization doesn't already have one), you can &lt;a href="http://pen.iana.org/pen/PenApplication.page"&gt;register&lt;/a&gt; for your
+own.&lt;/p&gt;
+&lt;h2&gt;Defining a dynamic list&lt;/h2&gt;
+&lt;p&gt;We're going to configure the &lt;code&gt;dynlist&lt;/code&gt; overlay so that when it sees an
+&lt;code&gt;obPerson&lt;/code&gt; object, it will use the &lt;code&gt;labeledURI&lt;/code&gt; attribute of that
+object to generate a list of &lt;code&gt;obMemberOf&lt;/code&gt; attributes containing the
+distinguished names of the groups of which the user is a member.
+We'll load the following LDIF file into our server:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;olcOverlay&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;dynlist&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;olcDatabase&lt;/span&gt;&lt;span class="o"&gt;={&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;}&lt;/span&gt;&lt;span class="n"&gt;hdb&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;olcOverlayConfig&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;olcDynamicList&lt;/span&gt;
+&lt;span class="n"&gt;olcOverlay&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;dynlist&lt;/span&gt;
+&lt;span class="n"&gt;olcDlAttrSet&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;obPerson&lt;/span&gt; &lt;span class="n"&gt;labeledURI&lt;/span&gt; &lt;span class="n"&gt;obMemberOf&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Note that the distinguished name for this entry depends on the DN of
+the database which you are configuring, so you'll need to modify the
+&lt;code&gt;olcDatabase=&lt;/code&gt; component in the DN.&lt;/p&gt;
+&lt;h2&gt;Setting user attributes&lt;/h2&gt;
+&lt;p&gt;With the above configuration in place, we can now add the necessary
+&lt;code&gt;labeledURI&lt;/code&gt; attribute to a user and see what happens.  For our
+purposes, this attribute needs to contain an LDAP URI that returns the
+groups of which the user is a member.  Assuming a user like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;posixAccount&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;inetOrgPerson&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;sn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;testuser&lt;/span&gt;
+&lt;span class="n"&gt;uid&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;uidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1001&lt;/span&gt;
+&lt;span class="n"&gt;gidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1001&lt;/span&gt;
+&lt;span class="n"&gt;homeDirectory&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="sr"&gt;/home/&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We'll need to add the following:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;labeledURI&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:///&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;??&lt;/span&gt;&lt;span class="n"&gt;sub&lt;/span&gt;&lt;span class="o"&gt;?(&amp;amp;(&lt;/span&gt;
+ &lt;span class="n"&gt;objectclass&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;posixgroup&lt;/span&gt;&lt;span class="o"&gt;)(&lt;/span&gt;&lt;span class="n"&gt;memberuid&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;))&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You could do this with the following LDIF file and &lt;code&gt;ldapmodify&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;changetype&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;modify&lt;/span&gt;
+&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;labeledURI&lt;/span&gt;
+&lt;span class="n"&gt;labeledURI&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:///&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;??&lt;/span&gt;&lt;span class="n"&gt;sub&lt;/span&gt;&lt;span class="o"&gt;?(&amp;amp;(&lt;/span&gt;
+ &lt;span class="n"&gt;objectclass&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;posixgroup&lt;/span&gt;&lt;span class="o"&gt;)(&lt;/span&gt;&lt;span class="n"&gt;memberuid&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;))&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Testing things out&lt;/h2&gt;
+&lt;p&gt;Assuming we have the following groups:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;posixGroup&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;gidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1001&lt;/span&gt;
+&lt;span class="n"&gt;memberUid&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+&lt;span class="n"&gt;memberUid&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+
+&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;staff&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;posixGroup&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;staff&lt;/span&gt;
+&lt;span class="n"&gt;gidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;2000&lt;/span&gt;
+&lt;span class="n"&gt;memberUid&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;If we look up the &lt;code&gt;user1&lt;/code&gt; user:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# ldapsearch -Y EXTERNAL -H ldapi:&lt;/span&gt;&lt;span class="c1"&gt;//%2fvar%2frun%2fldapi -b \&lt;/span&gt;
+  &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We should see &lt;code&gt;obMemberOf&lt;/code&gt; attributes in the result:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;sn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;testuser&lt;/span&gt;
+&lt;span class="n"&gt;uid&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;uidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1001&lt;/span&gt;
+&lt;span class="n"&gt;gidNumber&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1001&lt;/span&gt;
+&lt;span class="n"&gt;homeDirectory&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="sr"&gt;/home/&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;labeledURI&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:///&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="o"&gt;??&lt;/span&gt;&lt;span class="n"&gt;sub&lt;/span&gt;&lt;span class="o"&gt;?(&amp;amp;(&lt;/span&gt;&lt;span class="n"&gt;objectclass&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;posixgroup&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+ &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="n"&gt;memberuid&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;))&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;inetOrgPerson&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;oddPerson&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;posixAccount&lt;/span&gt;
+&lt;span class="n"&gt;obmemberof&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;obmemberof&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;staff&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;oddbit&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Caveats&lt;/h2&gt;
+&lt;p&gt;Note that this solution requires searching through all of your group
+entries every time you look up a user object.  Given a sufficiently
+large directory this may not be an optimal solution.&lt;/p&gt;</summary><category term="ldap"></category></entry><entry><title>Kerberos authenticated queries to Active Directory</title><link href="http://blog-beta.oddbit.com/2010/06/29/linux-kerberos-ad/" rel="alternate"></link><updated>2010-06-29T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-06-29:2010/06/29/linux-kerberos-ad/</id><summary type="html">&lt;p&gt;There are many guides out there to help you configure your Linux system as an LDAP and Kerberos client to an Active Directory server. Most of these guides solve the problem of authentication by embedding a username and password into a configuration file somewhere on your system. While this works, it presents some problems:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;If you use a common account for authentication from all of your Linux systems, a compromise on one system means updating the configuration of all of your systems.&lt;/li&gt;
+&lt;li&gt;If you don't want to use a common account, you need to provision a new account for each computer...&lt;/li&gt;
+&lt;li&gt;...which is silly, because if you join the system to Active Directory there is already a computer object associated with the system that can be used for authentication.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This document describes how to configure a Linux system such that queries
+generated by &lt;a href="http://www.padl.com/OSS/nss_ldap.html"&gt;nss_ldap&lt;/a&gt; will use either the current user's Kerberos
+credentials, or, for the root user, credentials stored in a Kerberos
+credentials cache.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Your Linux system must have a valid &lt;code&gt;keytab&lt;/code&gt; file.&lt;/p&gt;
+&lt;p&gt;A &lt;code&gt;keytab&lt;/code&gt; is a file containing pairs of Kerberos principals and encrypted keys.&lt;/p&gt;
+&lt;p&gt;Joining Active Directory using Samba's &lt;code&gt;net ads join&lt;/code&gt; will create the
+necessary keytab. It is also possible to create the keytab on your Windows
+domain controller and install it on your Linux systems. Instructions for
+doing this are beyond the scope of this document.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Host objects in Active Directory must have a &lt;code&gt;userPrincipalName&lt;/code&gt; attribute.&lt;/p&gt;
+&lt;p&gt;For example:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ldapsearch&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;dottiness&lt;/span&gt; &lt;span class="n"&gt;userPrincipalName&lt;/span&gt;
+&lt;span class="nl"&gt;dn:&lt;/span&gt; &lt;span class="n"&gt;CN&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;DOTTINESS&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;CN&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;Computers&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="nl"&gt;userPrincipalName:&lt;/span&gt; &lt;span class="n"&gt;host&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dottiness&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;EXAMPLE&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;COM&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Active Directory &lt;em&gt;does not&lt;/em&gt; automatically create a &lt;code&gt;userPrincipalName&lt;/code&gt; when a new host object is provisioned. You will either need to provide this value manually or develop an automated process that will populate this field when provisioning new host objects.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Kerberos credentials have a maximum usable lifetime. The cached credentials
+used for root queries by &lt;code&gt;nss_ldap&lt;/code&gt; must be refreshed periodically in order to
+function.&lt;/p&gt;
+&lt;p&gt;You will need to install a crontab (e.g., in &lt;code&gt;/etc/cron.d&lt;/code&gt;) that looks something
+like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;PATH&lt;/span&gt;&lt;span class="o"&gt;=/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;:/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;:/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;kerberos&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;
+&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;reboot&lt;/span&gt; &lt;span class="n"&gt;root&lt;/span&gt; &lt;span class="n"&gt;kinit&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;k&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ldap_cc&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;null&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&amp;amp;&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;
+&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;hourly&lt;/span&gt; &lt;span class="n"&gt;root&lt;/span&gt; &lt;span class="n"&gt;kinit&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;k&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ldap_cc&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;null&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&amp;amp;&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This periodically reauthenticates to your domain controller used the cached
+principal in the system keytab (&lt;code&gt;/etc/krb5.keytab&lt;/code&gt;) and caches the credentials in
+&lt;code&gt;/var/run/ldap_cc&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;You will need something similar to the following in &lt;code&gt;/etc/ldap.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# This is your domain controller.&lt;/span&gt;
+&lt;span class="n"&gt;uri&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//dc1.example.com&lt;/span&gt;
+&lt;span class="n"&gt;base&lt;/span&gt; &lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;scope&lt;/span&gt; &lt;span class="n"&gt;one&lt;/span&gt;
+&lt;span class="n"&gt;referrals&lt;/span&gt; &lt;span class="n"&gt;no&lt;/span&gt;
+&lt;span class="n"&gt;timelimit&lt;/span&gt; &lt;span class="mi"&gt;120&lt;/span&gt;
+&lt;span class="n"&gt;bind_timelimit&lt;/span&gt; &lt;span class="mi"&gt;120&lt;/span&gt;
+&lt;span class="n"&gt;idle_timelimit&lt;/span&gt; &lt;span class="mi"&gt;3600&lt;/span&gt;
+&lt;span class="n"&gt;ldap_version&lt;/span&gt; &lt;span class="mi"&gt;3&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Authenticate using SASL for user and root queries.&lt;/span&gt;
+&lt;span class="n"&gt;use_sasl&lt;/span&gt; &lt;span class="n"&gt;on&lt;/span&gt;
+&lt;span class="n"&gt;rootuse_sasl&lt;/span&gt; &lt;span class="n"&gt;on&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Use SASL&amp;#39;s gssapi (Kerberos) mechanism.&lt;/span&gt;
+&lt;span class="n"&gt;sasl_mech&lt;/span&gt; &lt;span class="n"&gt;gssapi&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Use these cached credentials for root.&lt;/span&gt;
+&lt;span class="n"&gt;krb5_ccname&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ldap_cc&lt;/span&gt;
+
+&lt;span class="n"&gt;nss_base_group&lt;/span&gt; &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;groups&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;nss_base_passwd&lt;/span&gt; &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="n"&gt;nss_initgroups_ignoreusers&lt;/span&gt; &lt;span class="n"&gt;root&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;named&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;avahi&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;haldaemon&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dbus&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;radvd&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;tomcat&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;radiusd&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;news&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;mailman&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;nscd&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;gdm&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;polkituser&lt;/span&gt;
+
+&lt;span class="cp"&gt;# These are common mappings for working with Active Directory.&lt;/span&gt;
+&lt;span class="n"&gt;nss_map_attribute&lt;/span&gt; &lt;span class="n"&gt;uid&lt;/span&gt; &lt;span class="n"&gt;sAMAccountName&lt;/span&gt;
+&lt;span class="n"&gt;nss_map_attribute&lt;/span&gt; &lt;span class="n"&gt;uniqueMember&lt;/span&gt; &lt;span class="n"&gt;member&lt;/span&gt;
+&lt;span class="n"&gt;nss_map_objectclass&lt;/span&gt; &lt;span class="n"&gt;posixAccount&lt;/span&gt; &lt;span class="n"&gt;user&lt;/span&gt;
+&lt;span class="n"&gt;nss_map_objectclass&lt;/span&gt; &lt;span class="n"&gt;posixGroup&lt;/span&gt; &lt;span class="n"&gt;group&lt;/span&gt;
+&lt;span class="n"&gt;nss_map_objectclass&lt;/span&gt; &lt;span class="n"&gt;shadowAccount&lt;/span&gt; &lt;span class="n"&gt;user&lt;/span&gt;
+
+&lt;span class="n"&gt;pam_login_attribute&lt;/span&gt; &lt;span class="n"&gt;sAMAccountName&lt;/span&gt;
+&lt;span class="n"&gt;pam_member_attribute&lt;/span&gt; &lt;span class="n"&gt;member&lt;/span&gt;
+&lt;span class="n"&gt;pam_password&lt;/span&gt; &lt;span class="n"&gt;ad&lt;/span&gt;
+&lt;span class="n"&gt;pam_password_prohibit_message&lt;/span&gt; &lt;span class="n"&gt;Please&lt;/span&gt; &lt;span class="n"&gt;visit&lt;/span&gt; &lt;span class="n"&gt;http&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//password.example.com to change your password.&lt;/span&gt;
+
+&lt;span class="n"&gt;pam_filter&lt;/span&gt; &lt;span class="n"&gt;objectclass&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;User&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The &lt;code&gt;use_sasl on&lt;/code&gt; directive configures &lt;code&gt;nss_ldap&lt;/code&gt; to use the Kerberos credentials
+for the current user when looking up user/group/etc information. The
+&lt;code&gt;rootuse_sasl on&lt;/code&gt; attribute does the same thing for processes running as &lt;code&gt;root&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Note that this configuration sets scope &lt;code&gt;one&lt;/code&gt;, which means that &lt;code&gt;nss_ldap&lt;/code&gt; &lt;em&gt;will
+not&lt;/em&gt; recurse down a directory tree. This is a performance optimization, not a
+requirement.&lt;/p&gt;
+&lt;h2&gt;As an unprivileged user&lt;/h2&gt;
+&lt;p&gt;Before acquiring Kerberos credentials:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;getent&lt;/span&gt; &lt;span class="n"&gt;passwd&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;times&lt;/span&gt; &lt;span class="n"&gt;out&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Authenticate to Kerberos:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;kinit&lt;/span&gt;
+&lt;span class="n"&gt;Password&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;EXAMPLE&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;COM&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With valid credentials:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;getent&lt;/span&gt; &lt;span class="n"&gt;passwd&lt;/span&gt; &lt;span class="n"&gt;lars&lt;/span&gt;
+&lt;span class="nl"&gt;lars:&lt;/span&gt;&lt;span class="o"&gt;*:&lt;/span&gt;&lt;span class="mi"&gt;500&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;500&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="err"&gt;\\&lt;/span&gt;&lt;span class="n"&gt;emc00&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;staff&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;l&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;windows&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;As root&lt;/h2&gt;
+&lt;p&gt;Before acquiring Kerberos credentials:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# getent passwd lars&lt;/span&gt;
+&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;times&lt;/span&gt; &lt;span class="n"&gt;out&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Update credentials cache from system keytab:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# kinit -k&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With valid credentials:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# getent passwd lars&lt;/span&gt;
+&lt;span class="nl"&gt;lars:&lt;/span&gt;&lt;span class="o"&gt;*:&lt;/span&gt;&lt;span class="mi"&gt;500&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;500&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="err"&gt;\\&lt;/span&gt;&lt;span class="n"&gt;emc00&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;staff&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;l&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;lars&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="n"&gt;windows&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This configuration makes the operation of &lt;code&gt;nss_ldap&lt;/code&gt; dependent on valid Kerberos
+credentials. If a user remains logged in after her Kerberos credentials have
+expired, she will experience degraded behavior, since many name lookup
+operations will timeout. Similarly, local system accounts that do not have
+valid Kerberos credentials will experience similar behavior (and will thus only
+be able to see local users and groups).&lt;/p&gt;
+&lt;!--
+An alternate solution to this problem would run a local LDAP proxy that (a)
+uses the system keytab to authenticate to AD, and (b) allows anonymous LDAP
+queries from localhost. I will discuss this configuration in a future post.
+--&gt;</summary><category term="ldap"></category><category term="active_directory"></category><category term="kerberos"></category></entry><entry><title>LDAP redundancy through proxy servers</title><link href="http://blog-beta.oddbit.com/2010/02/24/ldap-redundancy-through-proxy-servers/" rel="alternate"></link><updated>2010-02-24T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-02-24:2010/02/24/ldap-redundancy-through-proxy-servers/</id><summary type="html">&lt;h1&gt;Problem 1: Failover&lt;/h1&gt;
+&lt;h2&gt;The problem&lt;/h2&gt;
+&lt;p&gt;Many applications only allow you to configure a single LDAP server. This can lead to unnecessary service outages if your directory service infrastructure is highly available (e.g., you are running Active Directory) and your application cannot take advantage of this fact.&lt;/p&gt;
+&lt;h2&gt;A solution&lt;/h2&gt;
+&lt;p&gt;We can provide a level of redundancy by passing the LDAP connections through a load balancing proxy. While this makes the proxy a single point of failure, it is (a) a very simple tool and thus less prone to complex failure modes, (b) running on the same host as the web application, and (c) is completely under our control.&lt;/p&gt;
+&lt;p&gt;For this example, I will use &lt;a href="http://www.inlab.de/balance.html"&gt;Balance&lt;/a&gt;, a simple TCP load balancer from &lt;a href="http://www.inlab.de/"&gt;Inlab Software GmbH&lt;/a&gt;. There are packages available for most major Linux distributions, including &lt;a href="http://fedoraproject.org/"&gt;Fedora&lt;/a&gt; and &lt;a href="http://www.centos.org/"&gt;CentOS&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Balance is configured completely on the command line. To provide round-robin access to a suite of three directory servers running LDAP over SSL, you might use the following command line:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;balance&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="mf"&gt;127.0.0.1&lt;/span&gt; &lt;span class="mi"&gt;636&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.1&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Using balance's terminology, this creates one &lt;em&gt;group&lt;/em&gt; of two &lt;em&gt;channels&lt;/em&gt;. Balance will round-robin among the channels in this group. Note that here and in subsequent examples we are binding the proxy to the loopback interface so that it is only available to applications running on the same host.&lt;/p&gt;
+&lt;p&gt;If you would prefer to preferentially send all the requests to the first server, and only use the second server if the first is unavailable, you could use a configuration like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;balance&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="mf"&gt;127.0.0.1&lt;/span&gt; &lt;span class="mi"&gt;636&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.1&lt;/span&gt; &lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt; &lt;span class="mf"&gt;10.1.1.2&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;While you can run balance from a standard init (/etc/rc.d/...) script, I prefer to use a service manager such as &lt;a href="http://smarden.org/runit/"&gt;runit&lt;/a&gt; which takes care of restarting the service if it should exit unexpectedly. You could achieve the same thing in a slightly less flexible fashion by putting your balance command line in /etc/inittab. In either case you need to add the -f option to the command line, which causes balance to stay in the foreground.&lt;/p&gt;
+&lt;h1&gt;Problem 2: Debugging LDAP over SSL&lt;/h1&gt;
+&lt;h2&gt;The problem&lt;/h2&gt;
+&lt;p&gt;It is convenient to use a packet tracer such as &lt;a href="http://www.wireshark.org/"&gt;Wireshark&lt;/a&gt; to debug LDAP protocol errors. This is often more informative than the debugging information that will be available to you on the client side, and may be more useful than server side debugging in many cases, even supposing that you have administrative access to the directory servers.&lt;/p&gt;
+&lt;h2&gt;A solution&lt;/h2&gt;
+&lt;p&gt;You can use &lt;a href="http://www.stunnel.org/"&gt;Stunnel&lt;/a&gt;, a general purpose SSL proxy tool, to intercept unencrypted client connections on the local machine and then forward them over an SSL channel to a remote server. This makes the unencrypted LDAP traffic available on the loopback interface while still ensuring that it is encrypted on the wire.&lt;/p&gt;
+&lt;p&gt;Stunnel can operate both as an SSL server and as an SSL client. In this case, we will be running it in client mode, connecting to a remote SSL server (or to the proxy configured in our previous example). Stunnel is configured by means of a simple INI-style configuration file. To achieve the goals of this example we might put the following configuration in a file (say, stunnel.conf):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;[ldap]&lt;/span&gt;
+
+&lt;span class="na"&gt;accept&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;127.0.0.1:389&lt;/span&gt;
+&lt;span class="na"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;yes&lt;/span&gt;
+&lt;span class="na"&gt;connect&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;localhost:636&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;We would run stunnel like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;stunnel&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;to&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;stunnel&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Again, I would run this under the control of a service supervisor. To keep stunnel in the foreground we would add the following to the global section of the configuration file (i.e., before the &lt;code&gt;[ldap]&lt;/code&gt; section marker):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;foreground&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;yes&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;With both of these solutions in place, we have achieved the following:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;High availability.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our application will transparently make use of multiple directory servers. If a server fails, our application will continue to operate.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Security&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our traffic is encrypted on the wire, regardless of whether the application has support for LDAP over SSL.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Visibility&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;We are free to examine unencrypted traffic with a packet sniffer running on the local host.&lt;/p&gt;</summary><category term="balance"></category><category term="ldap"></category><category term="stunnel"></category><category term="proxy"></category><category term="ha"></category><category term="howto"></category><category term="ssl"></category></entry><entry><title>Merging directories with OpenLDAP's Meta backend</title><link href="http://blog-beta.oddbit.com/2010/02/16/merging-directories-with-openldap-meta/" rel="alternate"></link><updated>2010-02-16T00:00:00-05:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2010-02-16:2010/02/16/merging-directories-with-openldap-meta/</id><summary type="html">&lt;p&gt;This document provides an example of using OpenLDAP's meta backend to provide a unified view of two distinct LDAP directory trees. I was frustrated by the lack of simple examples available when I went looking for information on this topic, so this is my attempt to make life easier for the next person looking to do the same thing.&lt;/p&gt;
+&lt;p&gt;The particular use case that motiviated my interest in this topic was the need to configure web applications to (a) authenticate against an existing Active Directory server while (b) also allowing new accounts to be provisioned quickly and without granting any access in the AD environment. A complicating factor is that the group managing the AD server(s) was not the group implementing the web applications.&lt;/p&gt;
+&lt;h1&gt;Assumptions&lt;/h1&gt;
+&lt;p&gt;I'm making several assumptions while writing this document:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;You have root access on your system and are able to modify files in /etc/openldap and elsewhere on the filesystem.&lt;/li&gt;
+&lt;li&gt;You are somewhat familiar with LDAP.&lt;/li&gt;
+&lt;li&gt;You are somewhat familiar with OpenLDAP.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1&gt;Set up backend directories&lt;/h1&gt;
+&lt;h2&gt;Configure slapd&lt;/h2&gt;
+&lt;p&gt;We'll first create two "backend" LDAP directories. These will represent the directories you're trying to merge. For the purposes of this example we'll use the ldif backend, which stores data in LDIF format on the filesystem. This is great for testing (it's simple and easy to understand), but not so great for performance.&lt;/p&gt;
+&lt;p&gt;We define one backend like this in /etc/openldap/slapd-be-1.conf:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;database&lt;/span&gt;        &lt;span class="n"&gt;ldif&lt;/span&gt;
+&lt;span class="n"&gt;suffix&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;ou=backend1&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;directory&lt;/span&gt;       &lt;span class="s"&gt;&amp;quot;/var/lib/ldap/backend1&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;rootdn&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;cn=ldif-admin,ou=backend1&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;rootpw&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;LDIF&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And a second backend like this in /etc/openldap/slapd-be-2.conf:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;database&lt;/span&gt;        &lt;span class="n"&gt;ldif&lt;/span&gt;
+&lt;span class="n"&gt;suffix&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;ou=backend2&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;directory&lt;/span&gt;       &lt;span class="s"&gt;&amp;quot;/var/lib/ldap/backend2&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;rootdn&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;cn=ldif-admin,ou=backend2&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;rootpw&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;LDIF&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Now, we need to load these configs into the main slapd configuration file. Open slapd.conf, and look for the following comment:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;#######################################################################&lt;/span&gt;
+&lt;span class="c"&gt;# ldbm and/or bdb database definitions&lt;/span&gt;
+&lt;span class="c"&gt;#######################################################################&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Remove anything below this comment and then add the following lines:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;include&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openldap&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;slapd&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;be&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;1.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt;
+&lt;span class="n"&gt;include&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openldap&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;slapd&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;be&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;2.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Start up slapd&lt;/h2&gt;
+&lt;p&gt;Start up your LDAP service:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c"&gt;# slapd -f slapd.conf -h ldap://localhost/&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And check to make sure it's running:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# ps -fe | grep slapd&lt;/span&gt;
+&lt;span class="n"&gt;root&lt;/span&gt; &lt;span class="mi"&gt;15087&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="mi"&gt;22&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;48&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt; &lt;span class="mo"&gt;00&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt; &lt;span class="n"&gt;slapd&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;f&lt;/span&gt; &lt;span class="n"&gt;slapd&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;h&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//localhost/&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Populate backends with sample data&lt;/h2&gt;
+&lt;p&gt;We need to populate the directories with something to query.&lt;/p&gt;
+&lt;p&gt;Put this in backend1.ldif:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend1&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;top&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;organizationalUnit&lt;/span&gt;
+&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;backend1&lt;/span&gt;
+
+&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend1&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;top&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;organizationalUnit&lt;/span&gt;
+&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;people&lt;/span&gt;
+
+&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend1&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;inetOrgPerson&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;givenName&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="n"&gt;sn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Somebodyson&lt;/span&gt;
+&lt;span class="n"&gt;mail&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;com&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And this in backend2.ldif:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend2&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;top&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;organizationalUnit&lt;/span&gt;
+&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;backend2&lt;/span&gt;
+
+&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend2&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;top&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;organizationalUnit&lt;/span&gt;
+&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;people&lt;/span&gt;
+
+&lt;span class="n"&gt;dn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user2&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend2&lt;/span&gt;
+&lt;span class="n"&gt;objectClass&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;inetOrgPerson&lt;/span&gt;
+&lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user2&lt;/span&gt;
+&lt;span class="n"&gt;givenName&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user2&lt;/span&gt;
+&lt;span class="n"&gt;sn&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Somebodyson&lt;/span&gt;
+&lt;span class="n"&gt;mail&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user2&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="na"&gt;com&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And then load the data into the backends:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;ldapadd&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;H&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//localhost -D cn=ldif-admin,ou=backend1 \&lt;/span&gt;
+&lt;span class="c1"&gt;  -w LDIF -f backend1.ldif&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;ldapadd&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;H&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//localhost -D cn=ldif-admin,ou=backend2 \&lt;/span&gt;
+&lt;span class="c1"&gt;  -w LDIF -f backend2.ldif&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;You can verify that the data loaded correctly by issuing a query to the backends. E.g.:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;ldapsearch&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;H&lt;/span&gt; &lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//localhost -b ou=backend1 -LLL&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This should give you something that looks very much like the contents of backend1.ldif. You can do the same thing for backend2.&lt;/p&gt;
+&lt;h1&gt;Set up meta database&lt;/h1&gt;
+&lt;p&gt;We're now going to configure OpenLDAP's meta backend to merge the two directory trees. Complete documentation for the meta backend can be found in the &lt;a href="http://www.openldap.org/software/man.cgi?query=slapd-meta&amp;amp;apropos=0&amp;amp;sektion=0&amp;amp;manpath=OpenLDAP+2.4-Release&amp;amp;format=html"&gt;slapd-meta man page&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Put the following into a file called slapd-frontend.conf (we'll discuss the details in moment):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;database&lt;/span&gt;        &lt;span class="n"&gt;meta&lt;/span&gt;
+&lt;span class="n"&gt;suffix&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;dc=example,dc=com&amp;quot;&lt;/span&gt;
+
+&lt;span class="n"&gt;uri&lt;/span&gt;             &lt;span class="s"&gt;&amp;quot;ldap://localhost/ou=backend1,dc=example,dc=com&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;suffixmassage&lt;/span&gt;   &lt;span class="s"&gt;&amp;quot;ou=backend1,dc=example,dc=com&amp;quot;&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;ou=backend1&amp;quot;&lt;/span&gt;
+
+&lt;span class="n"&gt;uri&lt;/span&gt;             &lt;span class="s"&gt;&amp;quot;ldap://localhost/ou=backend2,dc=example,dc=com&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;suffixmassage&lt;/span&gt;   &lt;span class="s"&gt;&amp;quot;ou=backend2,dc=example,dc=com&amp;quot;&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;ou=backend2&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And then add to slapd.conf:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;include&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;openldap&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;slapd&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;frontend&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;conf&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Restart slapd. Let's do a quick search to see exactly what we've accomplished:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ldapsearch&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;H&lt;/span&gt; &lt;span class="err"&gt;&amp;#39;&lt;/span&gt;&lt;span class="n"&gt;ldap&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//localhost/&amp;#39; \&lt;/span&gt;
+&lt;span class="c1"&gt;  -b dc=example,dc=com objectclass=inetOrgPerson -LLL&lt;/span&gt;
+&lt;span class="nl"&gt;dn:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="nl"&gt;objectClass:&lt;/span&gt; &lt;span class="n"&gt;inetOrgPerson&lt;/span&gt;
+&lt;span class="nl"&gt;cn:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="nl"&gt;givenName:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;
+&lt;span class="nl"&gt;sn:&lt;/span&gt; &lt;span class="n"&gt;Somebodyson&lt;/span&gt;
+&lt;span class="nl"&gt;mail:&lt;/span&gt; &lt;span class="n"&gt;user1&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+
+&lt;span class="nl"&gt;dn:&lt;/span&gt; &lt;span class="n"&gt;cn&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user2&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;people&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;ou&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;backend2&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="n"&gt;dc&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;span class="nl"&gt;objectClass:&lt;/span&gt; &lt;span class="n"&gt;inetOrgPerson&lt;/span&gt;
+&lt;span class="nl"&gt;cn:&lt;/span&gt; &lt;span class="n"&gt;user2&lt;/span&gt;
+&lt;span class="nl"&gt;givenName:&lt;/span&gt; &lt;span class="n"&gt;user2&lt;/span&gt;
+&lt;span class="nl"&gt;sn:&lt;/span&gt; &lt;span class="n"&gt;Somebodyson&lt;/span&gt;
+&lt;span class="nl"&gt;mail:&lt;/span&gt; &lt;span class="n"&gt;user2&lt;/span&gt;&lt;span class="err"&gt;@&lt;/span&gt;&lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;com&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;As you can see from the output above, a single query is now returning results from both backends, merged into the dc=example,dc=com hierarchy.&lt;/p&gt;
+&lt;h2&gt;A closer look&lt;/h2&gt;
+&lt;p&gt;Let's take a closer look at the meta backend configuration.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;database&lt;/span&gt;        &lt;span class="n"&gt;meta&lt;/span&gt;
+&lt;span class="n"&gt;suffix&lt;/span&gt;          &lt;span class="s"&gt;&amp;quot;dc=example,dc=com&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The database statement begins a new database definition. The suffix statement identifies the namespace that will be served by this particular database.&lt;/p&gt;
+&lt;p&gt;Here is the proxy for backend1 (the entry for backend2 is virtually identical):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;uri&lt;/span&gt;             &lt;span class="s"&gt;&amp;quot;ldap://localhost/ou=backend1,dc=example,dc=com&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;suffixmassage&lt;/span&gt;   &lt;span class="s"&gt;&amp;quot;ou=backend1,dc=example,dc=com&amp;quot;&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;ou=backend1&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;The uri statement defines the host (and port) serving the target directory tree. The full syntax of the uri statement is described in the &lt;a href="http://www.openldap.org/software/man.cgi?query=slapd-meta&amp;amp;apropos=0&amp;amp;sektion=0&amp;amp;manpath=OpenLDAP+2.4-Release&amp;amp;format=html"&gt;slapd-meta man page&lt;/a&gt;; what we have here is a very simple example. The &lt;em&gt;naming context&lt;/em&gt; of the URI must fall within the namespace defined in the suffix statement at the beginning of the database definition.&lt;/p&gt;
+&lt;p&gt;The suffixmassage statement performs simple rewriting on distinguished names. It directs &lt;em&gt;slapd&lt;/em&gt; to replace ou=backend1,dc=example,dc=com with ou=backend1 when communicating with the backend directory (and vice-versa).&lt;/p&gt;
+&lt;p&gt;You can perform simple rewriting of attribute and object classes with the map statement. For example, if backend1 used a sAMAccountName attribute and our application was expecting a uid attribute, we could add this after the suffixmassage statement:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;map&lt;/span&gt; &lt;span class="n"&gt;attribute&lt;/span&gt; &lt;span class="n"&gt;uid&lt;/span&gt; &lt;span class="n"&gt;sAMAccountName&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h1&gt;Conclusion&lt;/h1&gt;
+&lt;p&gt;The sample configuration files, data, and code referenced in this post are available online in &lt;a href="http://github.com/larsks/OpenLDAP-Metadirectory-Example"&gt;a github repository&lt;/a&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;a href="http://github.com/larsks/OpenLDAP-Metadirectory-Example"&gt;http://github.com/larsks/OpenLDAP-Metadirectory-Example&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;I hope you've found this post useful, or at least informative. If you have any comments or questions regarding this post, please log them as issues on GitHub. This will make them easier for me to track.&lt;/p&gt;</summary><category term="meta"></category><category term="proxy"></category><category term="openldap"></category><category term="active_directory"></category><category term="ldap"></category></entry></feed>

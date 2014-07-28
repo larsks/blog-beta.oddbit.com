@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Odd Bits</title><link href="http://blog-beta.oddbit.com/" rel="alternate"></link><link href="http://blog-beta.oddbit.com/tag/rpm/atom/index.html" rel="self"></link><id>http://blog-beta.oddbit.com/</id><updated>2011-07-26T00:00:00-04:00</updated><entry><title>Fixing RPM with evil magic</title><link href="http://blog-beta.oddbit.com/2011/07/26/fixing-rpm-with-evil-magic/" rel="alternate"></link><updated>2011-07-26T00:00:00-04:00</updated><author><name>Lars Kellogg-Stedman</name></author><id>tag:blog-beta.oddbit.com,2011-07-26:2011/07/26/fixing-rpm-with-evil-magic/</id><summary type="html">&lt;h1&gt;Fixing rpmsign with evil magic&lt;/h1&gt;
+&lt;p&gt;At my office we are developing a deployment mechanism for RPM packages. The
+general workflow looks like this:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;You build a source rpm on your own machine.&lt;/li&gt;
+&lt;li&gt;You sign the rpm with your GPG key.&lt;/li&gt;
+&lt;li&gt;You submit the source RPM to our buildserver.&lt;/li&gt;
+&lt;li&gt;The buildserver validates your signature and then builds the package.&lt;/li&gt;
+&lt;li&gt;The buildserver signs the package using a master signing key.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The last step in that sequence represents a problem, because the &lt;code&gt;rpmsign&lt;/code&gt;
+command will always, always prompt for a password and read the response from
+&lt;code&gt;/dev/tty&lt;/code&gt;. This means that (a) you can't easily provide the password on stdin,
+and (b) you can't fix the problem using a passwordless key.&lt;/p&gt;
+&lt;p&gt;Other people have &lt;a href="http://jrmonk-techzine.blogspot.com/2010/06/how-to-sign-rpm-files-in-batch-mode.html"&gt;solved this problem using expect&lt;/a&gt;, but I've opted for
+another solution which in some ways seems cleaner and in others seems like a
+terrible idea: function interposition using &lt;code&gt;LD_PRELOAD&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;rpmsign&lt;/code&gt; command prompts for (and reads) a password using the &lt;code&gt;getpass()&lt;/code&gt;
+function call. If you look at the &lt;code&gt;getpass(3)&lt;/code&gt; man page, you'll see that the
+function is defined like this:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;#include &amp;lt;unistd.h&amp;gt;&lt;/span&gt;
+&lt;span class="kt"&gt;char&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nf"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt; &lt;span class="k"&gt;const&lt;/span&gt; &lt;span class="kt"&gt;char&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="n"&gt;prompt&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So we start with the following short block of C code:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;#include &amp;lt;stdio.h&amp;gt;&lt;/span&gt;
+&lt;span class="cp"&gt;#include &amp;lt;unistd.h&amp;gt;&lt;/span&gt;
+
+&lt;span class="kt"&gt;char&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nf"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt; &lt;span class="k"&gt;const&lt;/span&gt; &lt;span class="kt"&gt;char&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="n"&gt;prompt&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+ &lt;span class="n"&gt;printf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;I ATE YOUR PASSPHRASE.n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+ &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;This -- when properly loaded -- will replace the standard C library &lt;code&gt;getpass()&lt;/code&gt; function with our own version, which simply returns an empty string. This of course means we'll be using a passwordless key, but you could obviously have our replacement function return an actual password instead of an empty string. I would argue that by doing so you would not substantially increase the security of your solution.&lt;/p&gt;
+&lt;p&gt;Next we create a shared library:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;cc&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;fPIC&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;g&lt;/span&gt;   &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="n"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="n"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;ld&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;shared&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="n"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;so&lt;/span&gt; &lt;span class="n"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And now we perform our magic:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;LD_PRELOAD&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="err"&gt;$&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;pwd&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;getpass&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;so&lt;/span&gt; &lt;span class="n"&gt;rpmsign&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;addsign&lt;/span&gt; &lt;span class="n"&gt;some&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;src&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;rpm&lt;/span&gt;
+&lt;span class="n"&gt;I&lt;/span&gt; &lt;span class="n"&gt;ATE&lt;/span&gt; &lt;span class="n"&gt;YOUR&lt;/span&gt; &lt;span class="n"&gt;PASSPHRASE&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="n"&gt;Pass&lt;/span&gt; &lt;span class="n"&gt;phrase&lt;/span&gt; &lt;span class="n"&gt;is&lt;/span&gt; &lt;span class="n"&gt;good&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;And &lt;em&gt;voila&lt;/em&gt;! A solution for operating &lt;code&gt;rpmsign&lt;/code&gt; in batch mode.&lt;/p&gt;</summary><category term="rpm"></category></entry></feed>
