@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Retrieving Blogger posts by post id</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://blog-beta.oddbit.com/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://blog-beta.oddbit.com/" /> 
+		<!--[if lte IE 8]><script src="http://blog-beta.oddbit.com/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://blog-beta.oddbit.com">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://blog-beta.oddbit.com/2010/01/29/retrieving-blogger-posts-by-post-id/">Fri 29 January 2010</a></div>
+		<span class="byline">By <a href="http://blog-beta.oddbit.com/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://blog-beta.oddbit.com/tag/api/index.html" rel="tag">api</a>,  <a href="http://blog-beta.oddbit.com/tag/blogger/index.html" rel="tag">blogger</a>,  <a href="http://blog-beta.oddbit.com/tag/gdata/index.html" rel="tag">gdata</a>,  <a href="http://blog-beta.oddbit.com/tag/python/index.html" rel="tag">python</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://blog-beta.oddbit.com/2010/01/29/retrieving-blogger-posts-by-post-id/" title="Permalink to Retrieving Blogger posts by post id" rel="bookmark">Retrieving Blogger posts by post id</a>
+		</h2>
+		<div class="entry-content">
+			<p>I spent some time recently trying to figure out, using Google's <a href="http://code.google.com/apis/gdata/docs/2.0/basics.html">gdata</a> API, how to retrieve a post from a <a href="http://www.blogger.com/">Blogger</a> blog if I know corresponding post id. As far as I can tell there is no obvious way of doing this, at least not using the gdata.blogger.client api, but after much nashing of teeth I came up with the following solution.</p>
+<p>Given client, a <a href="http://gdata-python-client.googlecode.com/svn/trunk/pydocs/gdata.blogger.client.html">gdata.blogger.client</a> instance, and blog, a <a href="http://gdata-python-client.googlecode.com/svn/trunk/pydocs/gdata.blogger.data.html">gdata.blogger.data.Blog</a> instance, the following code will return a <a href="http://gdata-python-client.googlecode.com/svn/trunk/pydocs/gdata.blogger.data.html">gdata.blogger.data.BlogPost</a> instance:</p>
+<div class="highlight"><pre><span class="n">post</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">get_feed</span><span class="p">(</span><span class="n">blog</span><span class="p">.</span><span class="n">get_post_link</span><span class="p">().</span><span class="n">href</span>
+          <span class="o">+</span> <span class="err">&#39;</span><span class="o">/%</span><span class="n">s</span><span class="err">&#39;</span> <span class="o">%</span> <span class="n">post_id</span><span class="p">,</span>
+        <span class="n">auth_token</span><span class="o">=</span><span class="n">client</span><span class="p">.</span><span class="n">auth_token</span><span class="p">,</span>
+        <span class="n">desired_class</span><span class="o">=</span><span class="n">gdata</span><span class="p">.</span><span class="n">blogger</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">BlogPost</span><span class="p">)</span>
+</pre></div>
+
+
+<p>I'm not sure if this is the canonical solution or not, but it appears to work for me.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

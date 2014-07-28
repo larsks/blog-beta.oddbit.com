@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Quantum in Too Much Detail</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://blog-beta.oddbit.com/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://blog-beta.oddbit.com/" /> 
+		<!--[if lte IE 8]><script src="http://blog-beta.oddbit.com/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://blog-beta.oddbit.com">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://blog-beta.oddbit.com/2013/11/14/quantum-in-too-much-detail/">Thu 14 November 2013</a></div>
+		<span class="byline">By <a href="http://blog-beta.oddbit.com/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://blog-beta.oddbit.com/tag/networking/index.html" rel="tag">networking</a>,  <a href="http://blog-beta.oddbit.com/tag/openstack/index.html" rel="tag">openstack</a>,  <a href="http://blog-beta.oddbit.com/tag/quantum/index.html" rel="tag">quantum</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://blog-beta.oddbit.com/2013/11/14/quantum-in-too-much-detail/" title="Permalink to Quantum in Too Much Detail" rel="bookmark">Quantum in Too Much Detail</a>
+		</h2>
+		<div class="entry-content">
+			<blockquote>
+<p>I originally posted this article on
+the <a href="http://openstack.redhat.com/Networking_in_too_much_detail">RDO</a> 
+website.</p>
+</blockquote>
+<h1>The players</h1>
+<p>This document describes the architecture that results from a
+particular OpenStack configuration, specifically:</p>
+<ul>
+<li>Quantum networking using GRE tunnels;</li>
+<li>A dedicated network controller;</li>
+<li>A single instance running on a compute host</li>
+</ul>
+<p>Much of the document will be relevant to other configurations, but
+details will vary based on your choice of layer 2 connectivity, number
+of running instances, and so forth.</p>
+<p>The examples in this document were generated on a system with Quantum
+networking but will generally match what you see under Neutron as
+well, if you replace <code>quantum</code> by <code>neutron</code> in names.  The OVS flow
+rules under Neutron are somewhat more complex and I will cover those
+in another post.</p>
+<!-- more -->
+
+<h1>The lay of the land</h1>
+<p>This is a simplified architecture diagram of network connectivity in a
+quantum/neutron managed world:</p>
+<p><a href="/assets/quantum-gre.svg"><img
+  src="/assets/quantum-gre.svg" width="600"/></a></p>
+<p>Section names in this document include
+parenthetical references to the nodes on the map relevant to that
+particular section.</p>
+<h1>Compute host: instance networking (A,B,C)</h1>
+<p>An outbound packet starts on <code>eth0</code> of the virtual instance, which is
+connected to a <code>tap</code> device on the host, <code>tap7c7ae61e-05</code>.  This <code>tap</code>
+device is attached to a Linux bridge device, <code>qbr7c7ae61e-05</code>. What is
+this bridge device for? From the <a href="http://docs.openstack.org/network-admin/admin/content/under_the_hood_openvswitch.html">OpenStack Networking Administration
+Guide</a>:</p>
+<blockquote>
+<p>Ideally, the TAP device vnet0 would be connected directly to the
+integration bridge, br-int. Unfortunately, this isn't possible because
+of how OpenStack security groups are currently implemented. OpenStack
+uses iptables rules on the TAP devices such as vnet0 to implement
+security groups, and Open vSwitch is not compatible with iptables
+rules that are applied directly on TAP devices that are connected to
+an Open vSwitch port.</p>
+</blockquote>
+<p>Because this bridge device exists primarily to support firewall rules,
+I'm going to refer to it as the "firewall bridge".</p>
+<p>If you examine the firewall rules on your compute host, you will find
+that there are several rules associated with this <code>tap</code> device:</p>
+<div class="highlight"><pre><span class="cp"># iptables -S | grep tap7c7ae61e-05</span>
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">FORWARD</span> <span class="o">-</span><span class="n">m</span> <span class="n">physdev</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">out</span> <span class="n">tap7c7ae61e</span><span class="o">-</span><span class="mo">05</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">is</span><span class="o">-</span><span class="n">bridged</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">sg</span><span class="o">-</span><span class="n">chain</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">FORWARD</span> <span class="o">-</span><span class="n">m</span> <span class="n">physdev</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">in</span> <span class="n">tap7c7ae61e</span><span class="o">-</span><span class="mo">05</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">is</span><span class="o">-</span><span class="n">bridged</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">sg</span><span class="o">-</span><span class="n">chain</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">INPUT</span> <span class="o">-</span><span class="n">m</span> <span class="n">physdev</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">in</span> <span class="n">tap7c7ae61e</span><span class="o">-</span><span class="mo">05</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">is</span><span class="o">-</span><span class="n">bridged</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">sg</span><span class="o">-</span><span class="n">chain</span> <span class="o">-</span><span class="n">m</span> <span class="n">physdev</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">out</span> <span class="n">tap7c7ae61e</span><span class="o">-</span><span class="mo">05</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">is</span><span class="o">-</span><span class="n">bridged</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">sg</span><span class="o">-</span><span class="n">chain</span> <span class="o">-</span><span class="n">m</span> <span class="n">physdev</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">in</span> <span class="n">tap7c7ae61e</span><span class="o">-</span><span class="mo">05</span> <span class="o">--</span><span class="n">physdev</span><span class="o">-</span><span class="n">is</span><span class="o">-</span><span class="n">bridged</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span>
+</pre></div>
+
+
+<p>The <code>quantum-openvswi-sg-chain</code> is where <code>neutron</code>-managed security
+groups are realized.  The <code>quantum-openvswi-o7c7ae61e-0</code> chain
+controls outbound traffic FROM the instance, and by default looks like
+this:</p>
+<div class="highlight"><pre><span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">m</span> <span class="n">mac</span> <span class="o">!</span> <span class="o">--</span><span class="n">mac</span><span class="o">-</span><span class="n">source</span> <span class="n">FA</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">E</span><span class="o">:</span><span class="mo">03</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="n">E7</span> <span class="o">-</span><span class="n">j</span> <span class="n">DROP</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">p</span> <span class="n">udp</span> <span class="o">-</span><span class="n">m</span> <span class="n">udp</span> <span class="o">--</span><span class="n">sport</span> <span class="mi">68</span> <span class="o">--</span><span class="n">dport</span> <span class="mi">67</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">!</span> <span class="o">-</span><span class="n">s</span> <span class="mf">10.1.0.2</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">DROP</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">p</span> <span class="n">udp</span> <span class="o">-</span><span class="n">m</span> <span class="n">udp</span> <span class="o">--</span><span class="n">sport</span> <span class="mi">67</span> <span class="o">--</span><span class="n">dport</span> <span class="mi">68</span> <span class="o">-</span><span class="n">j</span> <span class="n">DROP</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">m</span> <span class="n">state</span> <span class="o">--</span><span class="n">state</span> <span class="n">INVALID</span> <span class="o">-</span><span class="n">j</span> <span class="n">DROP</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">m</span> <span class="n">state</span> <span class="o">--</span><span class="n">state</span> <span class="n">RELATED</span><span class="p">,</span><span class="n">ESTABLISHED</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">o7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">sg</span><span class="o">-</span><span class="n">fallback</span>
+</pre></div>
+
+
+<p>The <code>quantum-openvswi-i7c7ae61e-0</code> chain controls inbound traffic TO
+the instance.  After opening up port 22 in the default security group:</p>
+<div class="highlight"><pre><span class="cp"># neutron security-group-rule-create --protocol tcp \</span>
+<span class="cp">  --port-range-min 22 --port-range-max 22 --direction ingress default</span>
+</pre></div>
+
+
+<p>The rules look like this:</p>
+<div class="highlight"><pre><span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">m</span> <span class="n">state</span> <span class="o">--</span><span class="n">state</span> <span class="n">INVALID</span> <span class="o">-</span><span class="n">j</span> <span class="n">DROP</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">m</span> <span class="n">state</span> <span class="o">--</span><span class="n">state</span> <span class="n">RELATED</span><span class="p">,</span><span class="n">ESTABLISHED</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">p</span> <span class="n">icmp</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">p</span> <span class="n">tcp</span> <span class="o">-</span><span class="n">m</span> <span class="n">tcp</span> <span class="o">--</span><span class="n">dport</span> <span class="mi">22</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">p</span> <span class="n">tcp</span> <span class="o">-</span><span class="n">m</span> <span class="n">tcp</span> <span class="o">--</span><span class="n">dport</span> <span class="mi">80</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">s</span> <span class="mf">10.1.0.3</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">p</span> <span class="n">udp</span> <span class="o">-</span><span class="n">m</span> <span class="n">udp</span> <span class="o">--</span><span class="n">sport</span> <span class="mi">67</span> <span class="o">--</span><span class="n">dport</span> <span class="mi">68</span> <span class="o">-</span><span class="n">j</span> <span class="n">RETURN</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">i7c7ae61e</span><span class="o">-</span><span class="mi">0</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">openvswi</span><span class="o">-</span><span class="n">sg</span><span class="o">-</span><span class="n">fallback</span>
+</pre></div>
+
+
+<p>A second interface attached to the bridge, <code>qvb7c7ae61e-05</code>, attaches
+the firewall bridge to the integration bridge, typically named
+<code>br-int</code>.</p>
+<h1>Compute host: integration bridge (D,E)</h1>
+<p>The integration bridge, <code>br-int</code>, performs VLAN tagging and un-tagging
+for traffic coming from and to your instances.  At this moment,
+<code>br-int</code> looks something like this:</p>
+<div class="highlight"><pre><span class="cp"># ovs-vsctl show</span>
+<span class="n">Bridge</span> <span class="n">br</span><span class="o">-</span><span class="kt">int</span>
+    <span class="n">Port</span> <span class="s">&quot;qvo7c7ae61e-05&quot;</span>
+        <span class="nl">tag:</span> <span class="mi">1</span>
+        <span class="n">Interface</span> <span class="s">&quot;qvo7c7ae61e-05&quot;</span>
+    <span class="n">Port</span> <span class="n">patch</span><span class="o">-</span><span class="n">tun</span>
+        <span class="n">Interface</span> <span class="n">patch</span><span class="o">-</span><span class="n">tun</span>
+            <span class="nl">type:</span> <span class="n">patch</span>
+            <span class="nl">options:</span> <span class="p">{</span><span class="n">peer</span><span class="o">=</span><span class="n">patch</span><span class="o">-</span><span class="kt">int</span><span class="p">}</span>
+    <span class="n">Port</span> <span class="n">br</span><span class="o">-</span><span class="kt">int</span>
+        <span class="n">Interface</span> <span class="n">br</span><span class="o">-</span><span class="kt">int</span>
+            <span class="nl">type:</span> <span class="n">internal</span>
+</pre></div>
+
+
+<p>The interface <code>qvo7c7ae61e-05</code> is the other end of <code>qvb7c7ae61e-05</code>,
+and carries traffic to and from the firewall bridge. The <code>tag: 1</code> you
+see in the above output integrates that this is an access port
+attached to VLAN 1.  Untagged outbound traffic from this instance will be
+assigned VLAN ID 1, and inbound traffic with VLAN ID 1 will
+stripped of it's VLAN tag and sent out this port.</p>
+<p>Each network you create (with <code>neutron net-create</code>) will be assigned a
+different VLAN ID.</p>
+<p>The interface named <code>patch-tun</code> connects the integration bridge to the
+tunnel bridge, <code>br-tun</code>.</p>
+<h1>Compute host: tunnel bridge (F,G)</h1>
+<p>The tunnel bridge translates VLAN-tagged traffic from the
+integration bridge into <code>GRE</code> tunnels.  The translation between VLAN
+IDs and tunnel IDs is performed by OpenFlow rules installed on
+<code>br-tun</code>.  Before creating any instances, the flow rules on the bridge
+look like this:</p>
+<div class="highlight"><pre><span class="cp"># ovs-ofctl dump-flows br-tun</span>
+<span class="n">NXST_FLOW</span> <span class="n">reply</span> <span class="p">(</span><span class="n">xid</span><span class="o">=</span><span class="mh">0x4</span><span class="p">)</span><span class="o">:</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">871.283</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">862</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">drop</span>
+</pre></div>
+
+
+<p>There is a single rule that causes the bridge to drop all traffic.
+Afrer you boot an instance on this compute node, the rules are
+modified to look something like:</p>
+<div class="highlight"><pre><span class="cp"># ovs-ofctl dump-flows br-run</span>
+<span class="n">NXST_FLOW</span> <span class="n">reply</span> <span class="p">(</span><span class="n">xid</span><span class="o">=</span><span class="mh">0x4</span><span class="p">)</span><span class="o">:</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">422.158</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">55</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="mo">01</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">/</span><span class="mo">01</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">output</span><span class="o">:</span><span class="mi">1</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">421.948</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">8337</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">31</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">dd</span><span class="o">:</span><span class="n">c1</span><span class="o">:</span><span class="mi">62</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">NORMAL</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">422.357</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">82</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">10443</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">31</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span><span class="n">in_port</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">dl_vlan</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">set_tunnel</span><span class="o">:</span><span class="mh">0x2</span><span class="p">,</span><span class="n">NORMAL</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1502.657</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">596</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">423</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">drop</span>
+</pre></div>
+
+
+<p>In general, these rules are responsible for mapping traffic between
+VLAN ID 1, used by the integration bridge, and tunnel id 2, used by
+the GRE tunnel.</p>
+<p>The first rule...</p>
+<div class="highlight"><pre> <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">422.158</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">55</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="mo">01</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">/</span><span class="mo">01</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">output</span><span class="o">:</span><span class="mi">1</span>
+</pre></div>
+
+
+<p>...matches all multicast traffic (see <a href="http://openvswitch.org/cgi-bin/ovsman.cgi?page=utilities%2Fovs-ofctl.8">ovs-ofctl(8)</a>)
+on tunnel id 2 (<code>tun_id=0x2</code>), tags the ethernet frame with VLAN ID
+1 (<code>actions=mod_vlan_vid:1</code>), and sends it out port 1.  We can see
+from <code>ovs-ofctl show br-tun</code> that port 1 is <code>patch-int</code>:</p>
+<div class="highlight"><pre><span class="err">#</span> <span class="nt">ovs-ofctl</span> <span class="nt">show</span> <span class="nt">br-tun</span>
+<span class="nt">OFPT_FEATURES_REPLY</span> <span class="o">(</span><span class="nt">xid</span><span class="o">=</span><span class="nt">0x2</span><span class="o">):</span> <span class="nt">dpid</span><span class="nd">:0000068df4e44a49</span>
+<span class="nt">n_tables</span><span class="nd">:254</span><span class="o">,</span> <span class="nt">n_buffers</span><span class="nd">:256</span>
+<span class="nt">capabilities</span><span class="o">:</span> <span class="nt">FLOW_STATS</span> <span class="nt">TABLE_STATS</span> <span class="nt">PORT_STATS</span> <span class="nt">QUEUE_STATS</span> <span class="nt">ARP_MATCH_IP</span>
+<span class="nt">actions</span><span class="o">:</span> <span class="nt">OUTPUT</span> <span class="nt">SET_VLAN_VID</span> <span class="nt">SET_VLAN_PCP</span> <span class="nt">STRIP_VLAN</span> <span class="nt">SET_DL_SRC</span> <span class="nt">SET_DL_DST</span> <span class="nt">SET_NW_SRC</span> <span class="nt">SET_NW_DST</span> <span class="nt">SET_NW_TOS</span> <span class="nt">SET_TP_SRC</span> <span class="nt">SET_TP_DST</span> <span class="nt">ENQUEUE</span>
+ <span class="nt">1</span><span class="o">(</span><span class="nt">patch-int</span><span class="o">):</span> <span class="nt">addr</span><span class="nd">:46:3d:59:17:df:62</span>
+     <span class="nt">config</span><span class="o">:</span>     <span class="nt">0</span>
+     <span class="nt">state</span><span class="o">:</span>      <span class="nt">0</span>
+     <span class="nt">speed</span><span class="o">:</span> <span class="nt">0</span> <span class="nt">Mbps</span> <span class="nt">now</span><span class="o">,</span> <span class="nt">0</span> <span class="nt">Mbps</span> <span class="nt">max</span>
+ <span class="nt">2</span><span class="o">(</span><span class="nt">gre-2</span><span class="o">):</span> <span class="nt">addr</span><span class="nd">:a2:5f:a1:92:29:02</span>
+     <span class="nt">config</span><span class="o">:</span>     <span class="nt">0</span>
+     <span class="nt">state</span><span class="o">:</span>      <span class="nt">0</span>
+     <span class="nt">speed</span><span class="o">:</span> <span class="nt">0</span> <span class="nt">Mbps</span> <span class="nt">now</span><span class="o">,</span> <span class="nt">0</span> <span class="nt">Mbps</span> <span class="nt">max</span>
+ <span class="nt">LOCAL</span><span class="o">(</span><span class="nt">br-tun</span><span class="o">):</span> <span class="nt">addr</span><span class="nd">:06:8d:f4:e4:4a:49</span>
+     <span class="nt">config</span><span class="o">:</span>     <span class="nt">0</span>
+     <span class="nt">state</span><span class="o">:</span>      <span class="nt">0</span>
+     <span class="nt">speed</span><span class="o">:</span> <span class="nt">0</span> <span class="nt">Mbps</span> <span class="nt">now</span><span class="o">,</span> <span class="nt">0</span> <span class="nt">Mbps</span> <span class="nt">max</span>
+<span class="nt">OFPT_GET_CONFIG_REPLY</span> <span class="o">(</span><span class="nt">xid</span><span class="o">=</span><span class="nt">0x4</span><span class="o">):</span> <span class="nt">frags</span><span class="o">=</span><span class="nt">normal</span> <span class="nt">miss_send_len</span><span class="o">=</span><span class="nt">0</span>
+</pre></div>
+
+
+<p>The next rule...</p>
+<div class="highlight"><pre> <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">421.948</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">8337</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">31</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">dd</span><span class="o">:</span><span class="n">c1</span><span class="o">:</span><span class="mi">62</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">NORMAL</span>
+</pre></div>
+
+
+<p>...matches traffic coming in on tunnel 2 (<code>tun_id=0x2</code>) with an
+ethernet destination of <code>fa:16:3e:dd:c1:62</code>
+(<code>dl_dst=fa:16:3e:dd:c1:62</code>) and tags the ethernet frame with VLAN
+ID 1 (<code>actions=mod_vlan_vid:1</code>) before sending it out <code>patch-int</code>.</p>
+<p>The following rule...</p>
+<div class="highlight"><pre> <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">422.357</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">82</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">10443</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">31</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span><span class="n">in_port</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">dl_vlan</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">set_tunnel</span><span class="o">:</span><span class="mh">0x2</span><span class="p">,</span><span class="n">NORMAL</span>
+</pre></div>
+
+
+<p>...matches traffic coming in on port 1 (<code>in_port=1</code>) with VLAN ID 1
+(<code>dl_vlan=1</code>) and set the tunnel id to 2 (<code>actions=set_tunnel:0x2</code>)
+before sending it out the GRE tunnel.</p>
+<h1>Network host: tunnel bridge (H,I)</h1>
+<p>Traffic arrives on the network host via the GRE tunnel attached to
+<code>br-tun</code>.  This bridge has a flow table very similar to <code>br-tun</code> on
+the compute host:</p>
+<div class="highlight"><pre><span class="cp"># ovs-ofctl dump-flows br-tun</span>
+<span class="n">NXST_FLOW</span> <span class="n">reply</span> <span class="p">(</span><span class="n">xid</span><span class="o">=</span><span class="mh">0x4</span><span class="p">)</span><span class="o">:</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1239.229</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">23</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">4246</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="mo">01</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">/</span><span class="mo">01</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">output</span><span class="o">:</span><span class="mi">1</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">524.477</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">3498</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="mi">83</span><span class="o">:</span><span class="mi">69</span><span class="o">:</span><span class="n">cc</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">NORMAL</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1239.157</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">4565</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">148</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">aa</span><span class="o">:</span><span class="mi">99</span><span class="o">:</span><span class="mi">3</span><span class="n">c</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">NORMAL</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1239.304</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">76</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">9419</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span><span class="n">in_port</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">dl_vlan</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">set_tunnel</span><span class="o">:</span><span class="mh">0x2</span><span class="p">,</span><span class="n">NORMAL</span>
+ <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1527.016</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">880</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">527</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">drop</span>
+</pre></div>
+
+
+<p>As on the compute host, the first rule maps multicast traffic on
+tunnel ID 2 to VLAN 1.</p>
+<p>The second rule...</p>
+<div class="highlight"><pre> <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">524.477</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">3498</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="mi">83</span><span class="o">:</span><span class="mi">69</span><span class="o">:</span><span class="n">cc</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">NORMAL</span>
+</pre></div>
+
+
+<p>...matches traffic on the tunnel destined for the DHCP server at
+<code>fa:16:3e:83:69:cc</code>.  This is a <code>dnsmasq</code> process running inside a
+network namespace, the details of which we will examine shortly.</p>
+<p>The next rule...</p>
+<div class="highlight"><pre> <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1239.157</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">4565</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">148</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">tun_id</span><span class="o">=</span><span class="mh">0x2</span><span class="p">,</span><span class="n">dl_dst</span><span class="o">=</span><span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">aa</span><span class="o">:</span><span class="mi">99</span><span class="o">:</span><span class="mi">3</span><span class="n">c</span> <span class="n">actions</span><span class="o">=</span><span class="n">mod_vlan_vid</span><span class="o">:</span><span class="mi">1</span><span class="p">,</span><span class="n">NORMAL</span>
+</pre></div>
+
+
+<p>...matches traffic on tunnel ID 2 destined for the router at <code>fa:16:3e:aa:99:3c</code>, which is an interface in another network namespace.</p>
+<p>The following rule...</p>
+<div class="highlight"><pre> <span class="n">cookie</span><span class="o">=</span><span class="mh">0x0</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1239.304</span><span class="n">s</span><span class="p">,</span> <span class="n">table</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_packets</span><span class="o">=</span><span class="mi">76</span><span class="p">,</span> <span class="n">n_bytes</span><span class="o">=</span><span class="mi">9419</span><span class="p">,</span> <span class="n">idle_age</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">priority</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span><span class="n">in_port</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">dl_vlan</span><span class="o">=</span><span class="mi">1</span> <span class="n">actions</span><span class="o">=</span><span class="n">set_tunnel</span><span class="o">:</span><span class="mh">0x2</span><span class="p">,</span><span class="n">NORMAL</span>
+</pre></div>
+
+
+<p>...simply maps outbound traffic on VLAN ID 1 to tunnel ID 2.</p>
+<h1>Network host: integration bridge (J,K,M)</h1>
+<p>The integration bridge on the network controller serves to connect
+instances to network services, such as routers and DHCP servers.</p>
+<div class="highlight"><pre><span class="cp"># ovs-vsctl show</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="n">Bridge</span> <span class="n">br</span><span class="o">-</span><span class="kt">int</span>
+    <span class="n">Port</span> <span class="n">patch</span><span class="o">-</span><span class="n">tun</span>
+        <span class="n">Interface</span> <span class="n">patch</span><span class="o">-</span><span class="n">tun</span>
+            <span class="nl">type:</span> <span class="n">patch</span>
+            <span class="nl">options:</span> <span class="p">{</span><span class="n">peer</span><span class="o">=</span><span class="n">patch</span><span class="o">-</span><span class="kt">int</span><span class="p">}</span>
+    <span class="n">Port</span> <span class="s">&quot;tapf14c598d-98&quot;</span>
+        <span class="nl">tag:</span> <span class="mi">1</span>
+        <span class="n">Interface</span> <span class="s">&quot;tapf14c598d-98&quot;</span>
+    <span class="n">Port</span> <span class="n">br</span><span class="o">-</span><span class="kt">int</span>
+        <span class="n">Interface</span> <span class="n">br</span><span class="o">-</span><span class="kt">int</span>
+            <span class="nl">type:</span> <span class="n">internal</span>
+    <span class="n">Port</span> <span class="s">&quot;tapc2d7dd02-56&quot;</span>
+        <span class="nl">tag:</span> <span class="mi">1</span>
+        <span class="n">Interface</span> <span class="s">&quot;tapc2d7dd02-56&quot;</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="p">.</span>
+</pre></div>
+
+
+<p>It connects to the tunnel bridge, <code>br-tun</code>, via a patch interface,
+<code>patch-tun</code>.</p>
+<h1>Network host: DHCP server (M)</h1>
+<p>Each network for which DHCP is enabled has a DHCP server running on
+the network controller.  The DHCP server is an instance of <a href="http://www.thekelleys.org.uk/dnsmasq/doc.html">dnsmasq</a>
+running inside a <em>network namespace</em>.  A <em>network namespace</em> is a
+Linux kernel facility that allows groups of processes to have a
+network stack (interfaces, routing tables, iptables rules) distinct
+from that of the host.</p>
+<p>You can see a list of network namespace with the <code>ip netns</code> command,
+which in our configuration will look something like this:</p>
+<div class="highlight"><pre><span class="cp"># ip netns</span>
+<span class="n">qdhcp</span><span class="o">-</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span>
+<span class="n">qrouter</span><span class="o">-</span><span class="mi">2</span><span class="n">d214fde</span><span class="o">-</span><span class="mi">293</span><span class="n">c</span><span class="o">-</span><span class="mi">4</span><span class="n">d64</span><span class="o">-</span><span class="mi">8062</span><span class="o">-</span><span class="mf">797f</span><span class="mi">80</span><span class="n">ae2d8f</span>
+</pre></div>
+
+
+<p>The first of these (<code>qdhcp...</code>) is the DHCP server namespace for our private
+subnet, while the second (<code>qrouter...</code>) is the router.</p>
+<p>You can run a command inside a network namespace using the <code>ip netns
+exec</code> command.  For example, to see the interface configuration inside
+the DHCP server namespace (<code>lo</code> removed for brevity):</p>
+<div class="highlight"><pre><span class="cp"># ip netns exec qdhcp-88b1609c-68e0-49ca-a658-f1edff54a264 ip addr</span>
+<span class="mi">71</span><span class="o">:</span> <span class="n">tapf14c598d</span><span class="o">-</span><span class="mi">98</span><span class="o">:</span> <span class="o">&lt;</span><span class="n">BROADCAST</span><span class="p">,</span><span class="n">MULTICAST</span><span class="p">,</span><span class="n">UP</span><span class="p">,</span><span class="n">LOWER_UP</span><span class="o">&gt;</span> <span class="n">mtu</span> <span class="mi">1500</span> <span class="n">qdisc</span> <span class="n">pfifo_fast</span> <span class="n">state</span> <span class="n">UP</span> <span class="n">qlen</span> <span class="mi">1000</span>
+    <span class="n">link</span><span class="o">/</span><span class="n">ether</span> <span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span><span class="mf">2f</span><span class="o">:</span><span class="mo">03</span> <span class="n">brd</span> <span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span>
+    <span class="n">inet</span> <span class="mf">10.1.0.3</span><span class="o">/</span><span class="mi">24</span> <span class="n">brd</span> <span class="mf">10.1.0.255</span> <span class="n">scope</span> <span class="n">global</span> <span class="n">ns</span><span class="o">-</span><span class="n">f14c598d</span><span class="o">-</span><span class="mi">98</span>
+    <span class="n">inet6</span> <span class="n">fe80</span><span class="o">::</span><span class="n">f816</span><span class="o">:</span><span class="mi">3</span><span class="n">eff</span><span class="o">:</span><span class="n">fe10</span><span class="o">:</span><span class="mf">2f</span><span class="mo">03</span><span class="o">/</span><span class="mi">64</span> <span class="n">scope</span> <span class="n">link</span> 
+       <span class="n">valid_lft</span> <span class="n">forever</span> <span class="n">preferred_lft</span> <span class="n">forever</span>
+</pre></div>
+
+
+<p>Note the MAC address on interface <code>tapf14c598d-98</code>; this matches the MAC address in the flow rule we saw on the tunnel bridge.</p>
+<p>You can find the <code>dnsmasq</code> process associated with this namespace by
+search the output of <code>ps</code> for the id (the number after <code>qdhcp-</code> in the
+namespace name):</p>
+<div class="highlight"><pre><span class="cp"># ps -fe | grep 88b1609c-68e0-49ca-a658-f1edff54a264</span>
+<span class="n">nobody</span>   <span class="mi">23195</span>     <span class="mi">1</span>  <span class="mi">0</span> <span class="n">Oct26</span> <span class="o">?</span>        <span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span> <span class="n">dnsmasq</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">hosts</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">resolv</span> <span class="o">--</span><span class="n">strict</span><span class="o">-</span><span class="n">order</span> <span class="o">--</span><span class="n">bind</span><span class="o">-</span><span class="n">interfaces</span> <span class="o">--</span><span class="n">interface</span><span class="o">=</span><span class="n">ns</span><span class="o">-</span><span class="n">f14c598d</span><span class="o">-</span><span class="mi">98</span> <span class="o">--</span><span class="n">except</span><span class="o">-</span><span class="n">interface</span><span class="o">=</span><span class="n">lo</span> <span class="o">--</span><span class="n">pid</span><span class="o">-</span><span class="n">file</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">quantum</span><span class="o">/</span><span class="n">dhcp</span><span class="o">/</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span><span class="o">/</span><span class="n">pid</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">hostsfile</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">quantum</span><span class="o">/</span><span class="n">dhcp</span><span class="o">/</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span><span class="o">/</span><span class="n">host</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">optsfile</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">quantum</span><span class="o">/</span><span class="n">dhcp</span><span class="o">/</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span><span class="o">/</span><span class="n">opts</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">script</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">quantum</span><span class="o">-</span><span class="n">dhcp</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">dnsmasq</span><span class="o">-</span><span class="n">lease</span><span class="o">-</span><span class="n">update</span> <span class="o">--</span><span class="n">leasefile</span><span class="o">-</span><span class="n">ro</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">range</span><span class="o">=</span><span class="n">tag0</span><span class="p">,</span><span class="mf">10.1.0.0</span><span class="p">,</span><span class="k">static</span><span class="p">,</span><span class="mi">120</span><span class="n">s</span> <span class="o">--</span><span class="n">conf</span><span class="o">-</span><span class="n">file</span><span class="o">=</span> <span class="o">--</span><span class="n">domain</span><span class="o">=</span><span class="n">openstacklocal</span>
+<span class="n">root</span>     <span class="mi">23196</span> <span class="mi">23195</span>  <span class="mi">0</span> <span class="n">Oct26</span> <span class="o">?</span>        <span class="mo">00</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mo">00</span> <span class="n">dnsmasq</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">hosts</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">resolv</span> <span class="o">--</span><span class="n">strict</span><span class="o">-</span><span class="n">order</span> <span class="o">--</span><span class="n">bind</span><span class="o">-</span><span class="n">interfaces</span> <span class="o">--</span><span class="n">interface</span><span class="o">=</span><span class="n">ns</span><span class="o">-</span><span class="n">f14c598d</span><span class="o">-</span><span class="mi">98</span> <span class="o">--</span><span class="n">except</span><span class="o">-</span><span class="n">interface</span><span class="o">=</span><span class="n">lo</span> <span class="o">--</span><span class="n">pid</span><span class="o">-</span><span class="n">file</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">quantum</span><span class="o">/</span><span class="n">dhcp</span><span class="o">/</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span><span class="o">/</span><span class="n">pid</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">hostsfile</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">quantum</span><span class="o">/</span><span class="n">dhcp</span><span class="o">/</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span><span class="o">/</span><span class="n">host</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">optsfile</span><span class="o">=/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">quantum</span><span class="o">/</span><span class="n">dhcp</span><span class="o">/</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span><span class="o">/</span><span class="n">opts</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">script</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">quantum</span><span class="o">-</span><span class="n">dhcp</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">dnsmasq</span><span class="o">-</span><span class="n">lease</span><span class="o">-</span><span class="n">update</span> <span class="o">--</span><span class="n">leasefile</span><span class="o">-</span><span class="n">ro</span> <span class="o">--</span><span class="n">dhcp</span><span class="o">-</span><span class="n">range</span><span class="o">=</span><span class="n">tag0</span><span class="p">,</span><span class="mf">10.1.0.0</span><span class="p">,</span><span class="k">static</span><span class="p">,</span><span class="mi">120</span><span class="n">s</span> <span class="o">--</span><span class="n">conf</span><span class="o">-</span><span class="n">file</span><span class="o">=</span> <span class="o">--</span><span class="n">domain</span><span class="o">=</span><span class="n">openstacklocal</span>
+</pre></div>
+
+
+<h1>Network host: Router (K,L)</h1>
+<p>A router is a network namespace with a set of routing tables
+and iptables rules that performs the routing between subnets.  Recall
+that we saw two network namespaces in our configuration:</p>
+<div class="highlight"><pre><span class="cp"># ip netns</span>
+<span class="n">qdhcp</span><span class="o">-</span><span class="mi">88</span><span class="n">b1609c</span><span class="o">-</span><span class="mf">68e0</span><span class="o">-</span><span class="mi">49</span><span class="n">ca</span><span class="o">-</span><span class="n">a658</span><span class="o">-</span><span class="n">f1edff54a264</span>
+<span class="n">qrouter</span><span class="o">-</span><span class="mi">2</span><span class="n">d214fde</span><span class="o">-</span><span class="mi">293</span><span class="n">c</span><span class="o">-</span><span class="mi">4</span><span class="n">d64</span><span class="o">-</span><span class="mi">8062</span><span class="o">-</span><span class="mf">797f</span><span class="mi">80</span><span class="n">ae2d8f</span>
+</pre></div>
+
+
+<p>Using the <code>ip netns exec</code> command, we can inspect the interfaces
+associated with the router (<code>lo</code> removed for brevity):</p>
+<div class="highlight"><pre><span class="cp"># ip netns exec qrouter-2d214fde-293c-4d64-8062-797f80ae2d8f ip addr</span>
+<span class="mi">66</span><span class="o">:</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span><span class="o">:</span> <span class="o">&lt;</span><span class="n">BROADCAST</span><span class="p">,</span><span class="n">MULTICAST</span><span class="p">,</span><span class="n">UP</span><span class="p">,</span><span class="n">LOWER_UP</span><span class="o">&gt;</span> <span class="n">mtu</span> <span class="mi">1500</span> <span class="n">qdisc</span> <span class="n">pfifo_fast</span> <span class="n">state</span> <span class="n">UP</span> <span class="n">qlen</span> <span class="mi">1000</span>
+    <span class="n">link</span><span class="o">/</span><span class="n">ether</span> <span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="mi">5</span><span class="n">c</span><span class="o">:</span><span class="n">a2</span><span class="o">:</span><span class="n">ac</span> <span class="n">brd</span> <span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span>
+    <span class="n">inet</span> <span class="mf">172.24.4.227</span><span class="o">/</span><span class="mi">28</span> <span class="n">brd</span> <span class="mf">172.24.4.239</span> <span class="n">scope</span> <span class="n">global</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span>
+    <span class="n">inet</span> <span class="mf">172.24.4.228</span><span class="o">/</span><span class="mi">32</span> <span class="n">brd</span> <span class="mf">172.24.4.228</span> <span class="n">scope</span> <span class="n">global</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span>
+    <span class="n">inet6</span> <span class="n">fe80</span><span class="o">::</span><span class="n">f816</span><span class="o">:</span><span class="mi">3</span><span class="n">eff</span><span class="o">:</span><span class="n">fe5c</span><span class="o">:</span><span class="n">a2ac</span><span class="o">/</span><span class="mi">64</span> <span class="n">scope</span> <span class="n">link</span> 
+       <span class="n">valid_lft</span> <span class="n">forever</span> <span class="n">preferred_lft</span> <span class="n">forever</span>
+<span class="mi">68</span><span class="o">:</span> <span class="n">qr</span><span class="o">-</span><span class="n">c2d7dd02</span><span class="o">-</span><span class="mi">56</span><span class="o">:</span> <span class="o">&lt;</span><span class="n">BROADCAST</span><span class="p">,</span><span class="n">MULTICAST</span><span class="p">,</span><span class="n">UP</span><span class="p">,</span><span class="n">LOWER_UP</span><span class="o">&gt;</span> <span class="n">mtu</span> <span class="mi">1500</span> <span class="n">qdisc</span> <span class="n">pfifo_fast</span> <span class="n">state</span> <span class="n">UP</span> <span class="n">qlen</span> <span class="mi">1000</span>
+    <span class="n">link</span><span class="o">/</span><span class="n">ether</span> <span class="n">fa</span><span class="o">:</span><span class="mi">16</span><span class="o">:</span><span class="mi">3</span><span class="n">e</span><span class="o">:</span><span class="n">ea</span><span class="o">:</span><span class="mi">64</span><span class="o">:</span><span class="mi">6</span><span class="n">e</span> <span class="n">brd</span> <span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span><span class="o">:</span><span class="n">ff</span>
+    <span class="n">inet</span> <span class="mf">10.1.0.1</span><span class="o">/</span><span class="mi">24</span> <span class="n">brd</span> <span class="mf">10.1.0.255</span> <span class="n">scope</span> <span class="n">global</span> <span class="n">qr</span><span class="o">-</span><span class="n">c2d7dd02</span><span class="o">-</span><span class="mi">56</span>
+    <span class="n">inet6</span> <span class="n">fe80</span><span class="o">::</span><span class="n">f816</span><span class="o">:</span><span class="mi">3</span><span class="n">eff</span><span class="o">:</span><span class="n">feea</span><span class="o">:</span><span class="mi">646</span><span class="n">e</span><span class="o">/</span><span class="mi">64</span> <span class="n">scope</span> <span class="n">link</span> 
+       <span class="n">valid_lft</span> <span class="n">forever</span> <span class="n">preferred_lft</span> <span class="n">forever</span>
+</pre></div>
+
+
+<p>The first interface, <code>qg-d48b49e0-aa</code>, connects the router to the
+gateway set by the <code>router-gateway-set</code> command.  The second
+interface, <code>qr-c2d7dd02-56</code>, is what connects the router to the
+integration bridge.</p>
+<p>Looking at the routing tables inside the router, we see that there is
+a default gateway pointing to the <code>.1</code> address of our external
+network, and the expected network routes for directly attached
+networks:</p>
+<div class="highlight"><pre><span class="cp"># ip netns exec qrouter-2d214fde-293c-4d64-8062-797f80ae2d8f ip route</span>
+<span class="mf">172.24.4.224</span><span class="o">/</span><span class="mi">28</span> <span class="n">dev</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span>  <span class="n">proto</span> <span class="n">kernel</span>  <span class="n">scope</span> <span class="n">link</span>  <span class="n">src</span> <span class="mf">172.24.4.227</span> 
+<span class="mf">10.1.0.0</span><span class="o">/</span><span class="mi">24</span> <span class="n">dev</span> <span class="n">qr</span><span class="o">-</span><span class="n">c2d7dd02</span><span class="o">-</span><span class="mi">56</span>  <span class="n">proto</span> <span class="n">kernel</span>  <span class="n">scope</span> <span class="n">link</span>  <span class="n">src</span> <span class="mf">10.1.0.1</span> 
+<span class="k">default</span> <span class="n">via</span> <span class="mf">172.24.4.225</span> <span class="n">dev</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span>
+</pre></div>
+
+
+<p>The netfilter <code>nat</code> table inside the router namespace is responsible
+for associating floating IP addresses with your instances.  For
+example, after associating the address <code>172.24.4.228</code> with our
+instance, the <code>nat</code> table looks like this:</p>
+<div class="highlight"><pre><span class="cp"># ip netns exec qrouter-2d214fde-293c-4d64-8062-797f80ae2d8f iptables -t nat -S</span>
+<span class="o">-</span><span class="n">P</span> <span class="n">PREROUTING</span> <span class="n">ACCEPT</span>
+<span class="o">-</span><span class="n">P</span> <span class="n">POSTROUTING</span> <span class="n">ACCEPT</span>
+<span class="o">-</span><span class="n">P</span> <span class="n">OUTPUT</span> <span class="n">ACCEPT</span>
+<span class="o">-</span><span class="n">N</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">OUTPUT</span>
+<span class="o">-</span><span class="n">N</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">POSTROUTING</span>
+<span class="o">-</span><span class="n">N</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">PREROUTING</span>
+<span class="o">-</span><span class="n">N</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="kt">float</span><span class="o">-</span><span class="n">snat</span>
+<span class="o">-</span><span class="n">N</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">snat</span>
+<span class="o">-</span><span class="n">N</span> <span class="n">quantum</span><span class="o">-</span><span class="n">postrouting</span><span class="o">-</span><span class="n">bottom</span>
+<span class="o">-</span><span class="n">A</span> <span class="n">PREROUTING</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">PREROUTING</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">POSTROUTING</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">POSTROUTING</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">POSTROUTING</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">postrouting</span><span class="o">-</span><span class="n">bottom</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">OUTPUT</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">OUTPUT</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">OUTPUT</span> <span class="o">-</span><span class="n">d</span> <span class="mf">172.24.4.228</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">DNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">destination</span> <span class="mf">10.1.0.2</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">POSTROUTING</span> <span class="o">!</span> <span class="o">-</span><span class="n">i</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span> <span class="o">!</span> <span class="o">-</span><span class="n">o</span> <span class="n">qg</span><span class="o">-</span><span class="n">d48b49e0</span><span class="o">-</span><span class="n">aa</span> <span class="o">-</span><span class="n">m</span> <span class="n">conntrack</span> <span class="o">!</span> <span class="o">--</span><span class="n">ctstate</span> <span class="n">DNAT</span> <span class="o">-</span><span class="n">j</span> <span class="n">ACCEPT</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">PREROUTING</span> <span class="o">-</span><span class="n">d</span> <span class="mf">169.254.169.254</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">p</span> <span class="n">tcp</span> <span class="o">-</span><span class="n">m</span> <span class="n">tcp</span> <span class="o">--</span><span class="n">dport</span> <span class="mi">80</span> <span class="o">-</span><span class="n">j</span> <span class="n">REDIRECT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">ports</span> <span class="mi">9697</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">PREROUTING</span> <span class="o">-</span><span class="n">d</span> <span class="mf">172.24.4.228</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">DNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">destination</span> <span class="mf">10.1.0.2</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="kt">float</span><span class="o">-</span><span class="n">snat</span> <span class="o">-</span><span class="n">s</span> <span class="mf">10.1.0.2</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">SNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">source</span> <span class="mf">172.24.4.228</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">snat</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="kt">float</span><span class="o">-</span><span class="n">snat</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">snat</span> <span class="o">-</span><span class="n">s</span> <span class="mf">10.1.0.0</span><span class="o">/</span><span class="mi">24</span> <span class="o">-</span><span class="n">j</span> <span class="n">SNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">source</span> <span class="mf">172.24.4.227</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">postrouting</span><span class="o">-</span><span class="n">bottom</span> <span class="o">-</span><span class="n">j</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">snat</span>
+</pre></div>
+
+
+<p>There are <code>SNAT</code> and <code>DNAT</code> rules to map traffic between the floating
+address, <code>172.24.4.228</code>, and the private address <code>10.1.0.2</code>:</p>
+<div class="highlight"><pre><span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">OUTPUT</span> <span class="o">-</span><span class="n">d</span> <span class="mf">172.24.4.228</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">DNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">destination</span> <span class="mf">10.1.0.2</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">PREROUTING</span> <span class="o">-</span><span class="n">d</span> <span class="mf">172.24.4.228</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">DNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">destination</span> <span class="mf">10.1.0.2</span> 
+<span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="kt">float</span><span class="o">-</span><span class="n">snat</span> <span class="o">-</span><span class="n">s</span> <span class="mf">10.1.0.2</span><span class="o">/</span><span class="mi">32</span> <span class="o">-</span><span class="n">j</span> <span class="n">SNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">source</span> <span class="mf">172.24.4.228</span>
+</pre></div>
+
+
+<p>When you associate a floating ip address with an instance, similar
+rules will be created in this table.</p>
+<p>There is also an <code>SNAT</code> rule that NATs all outbound traffic from our
+private network to <code>172.24.4.227</code>:</p>
+<div class="highlight"><pre><span class="o">-</span><span class="n">A</span> <span class="n">quantum</span><span class="o">-</span><span class="n">l3</span><span class="o">-</span><span class="n">agent</span><span class="o">-</span><span class="n">snat</span> <span class="o">-</span><span class="n">s</span> <span class="mf">10.1.0.0</span><span class="o">/</span><span class="mi">24</span> <span class="o">-</span><span class="n">j</span> <span class="n">SNAT</span> <span class="o">--</span><span class="n">to</span><span class="o">-</span><span class="n">source</span> <span class="mf">172.24.4.227</span>
+</pre></div>
+
+
+<p>This permits instances to have outbound connectivity even without a
+public ip address.</p>
+<h1>Network host: External traffic (L)</h1>
+<p>"External" traffic flows through <code>br-ex</code> via the <code>qg-d48b49e0-aa</code>
+interface in the router name space.</p>
+<div class="highlight"><pre><span class="n">Bridge</span> <span class="n">br</span><span class="o">-</span><span class="n">ex</span>
+    <span class="n">Port</span> <span class="s">&quot;qg-d48b49e0-aa&quot;</span>
+        <span class="n">Interface</span> <span class="s">&quot;qg-d48b49e0-aa&quot;</span>
+    <span class="n">Port</span> <span class="n">br</span><span class="o">-</span><span class="n">ex</span>
+        <span class="n">Interface</span> <span class="n">br</span><span class="o">-</span><span class="n">ex</span>
+            <span class="nl">type:</span> <span class="n">internal</span>
+</pre></div>
+
+
+<p>What happens when traffic gets this far depends on your local
+configuration.</p>
+<h2>NAT to host address</h2>
+<p>If you assign the gateway address for your public network to <code>br-ex</code>:</p>
+<div class="highlight"><pre><span class="c"># ip addr add 172.24.4.225/28 dev br-ex</span>
+</pre></div>
+
+
+<p>Then you can create forwarding and NAT rules that will cause
+"external" traffic from your instances to get rewritten to your
+network controller's ip address and sent out on the network:</p>
+<div class="highlight"><pre><span class="c"># iptables -A FORWARD -d 172.24.4.224/28 -j ACCEPT </span>
+<span class="c"># iptables -A FORWARD -s 172.24.4.224/28 -j ACCEPT </span>
+<span class="c"># iptables -t nat -I POSTROUTING 1 -s 172.24.4.224/28 -j MASQUERADE</span>
+</pre></div>
+
+
+<h2>Direct network connection</h2>
+<p>If you have an external router that will act as a gateway for your
+public network, you can add an interface on that network to the
+bridge.  For example, assuming that <code>eth2</code> was on the same network as
+<code>172.24.4.225</code>:</p>
+<div class="highlight"><pre><span class="c"># ovs-vsctl add-port br-ex eth2</span>
+</pre></div>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; A random collection of OpenStack Tools</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://blog-beta.oddbit.com/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://blog-beta.oddbit.com/" /> 
+		<!--[if lte IE 8]><script src="http://blog-beta.oddbit.com/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://blog-beta.oddbit.com">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://blog-beta.oddbit.com/2013/11/12/a-random-collection/">Tue 12 November 2013</a></div>
+		<span class="byline">By <a href="http://blog-beta.oddbit.com/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://blog-beta.oddbit.com/tag/openstack/index.html" rel="tag">openstack</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://blog-beta.oddbit.com/2013/11/12/a-random-collection/" title="Permalink to A random collection of OpenStack Tools" rel="bookmark">A random collection of OpenStack Tools</a>
+		</h2>
+		<div class="entry-content">
+			<p>I've been working with <a href="http://openstack.org/">OpenStack</a> a lot recently, and I've ended up with a small collection of utilities that make my life easier.  On the odd chance that they'll make your life easier, too, I thought I'd hilight them here.</p>
+<!-- more -->
+
+<h2>Crux</h2>
+<p><a href="http://github.com/larsks/crux">Crux</a> is a tool for provisioning tenants, users, and roles in keystone.  Instead of a sequence of keystone command, you can provision new tenants, users, and roles with a single comand.</p>
+<p>For example, to create user <code>demo</code> in the <code>demo</code> tenant with password secret:</p>
+<div class="highlight"><pre><span class="cp"># crux --user demo:demo::secret</span>
+<span class="mi">2013</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">21</span> <span class="n">crux</span> <span class="n">WARNING</span> <span class="n">creating</span> <span class="n">tenant</span> <span class="n">demo</span>
+<span class="mi">2013</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">21</span> <span class="n">crux</span> <span class="n">WARNING</span> <span class="n">creating</span> <span class="n">user</span> <span class="n">demo</span> <span class="n">with</span> <span class="n">password</span> <span class="n">secret</span>
+</pre></div>
+
+
+<p>Crux is in general idempotent; if we were to run the same command a second time we woudl see:</p>
+<div class="highlight"><pre><span class="cp"># crux --user demo:demo::secret</span>
+<span class="mi">2013</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">21</span> <span class="n">crux</span> <span class="n">WARNING</span> <span class="n">set</span> <span class="n">password</span> <span class="k">for</span> <span class="n">user</span> <span class="n">demo</span> <span class="n">to</span> <span class="n">secret</span>
+</pre></div>
+
+
+<p>Crux can also take input from a configuration file, so you can quickly set up a complex set of tenants and users.</p>
+<h2>Sqlcli</h2>
+<p><a href="http://github.com/larsks/sqlcli">Sqlcli</a> uses <a href="http://www.sqlalchemy.org/">SQLAlchemy</a> to run SQL queries against a variety of backends specified by SQL connection URLs.  I wrote this to perform queries and simple maintenance against the various databases used by OpenStack.  For example, you can get a list of networks from the Neutron database with a command like this:</p>
+<div class="highlight"><pre><span class="cp"># sqlcli -f /etc/neutron/plugin.ini -i DATABASE/sql_connection \</span>
+<span class="cp">  &#39;select name,cidr from subnets&#39;</span>
+</pre></div>
+
+
+<p>And get output like this:</p>
+<div class="highlight"><pre><span class="n">public</span><span class="p">,</span><span class="mf">172.24.4.224</span><span class="o">/</span><span class="mi">28</span>
+<span class="n">net0</span><span class="o">-</span><span class="n">subnet0</span><span class="p">,</span><span class="mf">10.0.0.0</span><span class="o">/</span><span class="mi">24</span>
+</pre></div>
+
+
+<p>You can add the <code>--pretty</code> flag and get output like this:</p>
+<div class="highlight"><pre><span class="o">+--------------+-----------------+</span>
+<span class="o">|</span>     <span class="n">name</span>     <span class="o">|</span>       <span class="n">cidr</span>      <span class="o">|</span>
+<span class="o">+--------------+-----------------+</span>
+<span class="o">|</span>    <span class="n">public</span>    <span class="o">|</span> <span class="mf">172.24.4.224</span><span class="o">/</span><span class="mi">28</span> <span class="o">|</span>
+<span class="o">|</span> <span class="n">net0</span><span class="o">-</span><span class="n">subnet0</span> <span class="o">|</span>   <span class="mf">10.0.0.0</span><span class="o">/</span><span class="mi">24</span>   <span class="o">|</span>
+<span class="o">+--------------+-----------------+</span>
+</pre></div>
+
+
+<h2>openstack-service</h2>
+<p>The <a href="http://github.com/larsks/osctl">openstack-service</a> command is a convenience tool for managing OpenStack services.  It lets you start/stop or query the status of groups of related services.  For example, if you want to see the status of all your Cinder services, you can run:</p>
+<div class="highlight"><pre><span class="c"># openstack-service status cinder</span>
+</pre></div>
+
+
+<p>And get:</p>
+<div class="highlight"><pre><span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">api</span> <span class="p">(</span><span class="n">pid</span>  <span class="mi">11644</span><span class="p">)</span> <span class="n">is</span> <span class="n">running</span><span class="p">...</span>
+<span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">scheduler</span> <span class="p">(</span><span class="n">pid</span>  <span class="mi">11790</span><span class="p">)</span> <span class="n">is</span> <span class="n">running</span><span class="p">...</span>
+<span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">volume</span> <span class="p">(</span><span class="n">pid</span>  <span class="mi">11712</span><span class="p">)</span> <span class="n">is</span> <span class="n">running</span><span class="p">...</span>
+</pre></div>
+
+
+<p>You can stop all Cinder and Glance services like this:</p>
+<div class="highlight"><pre><span class="cp"># openstack-service stop cinder glance</span>
+<span class="n">Stopping</span> <span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">api</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Stopping</span> <span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">scheduler</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Stopping</span> <span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">volume</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Stopping</span> <span class="n">openstack</span><span class="o">-</span><span class="n">glance</span><span class="o">-</span><span class="n">api</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Stopping</span> <span class="n">openstack</span><span class="o">-</span><span class="n">glance</span><span class="o">-</span><span class="n">registry</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+</pre></div>
+
+
+<p>And start them back up again the same way:</p>
+<div class="highlight"><pre><span class="cp"># openstack-service start cinder glance</span>
+<span class="n">Starting</span> <span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">api</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Starting</span> <span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">scheduler</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Starting</span> <span class="n">openstack</span><span class="o">-</span><span class="n">cinder</span><span class="o">-</span><span class="n">volume</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Starting</span> <span class="n">openstack</span><span class="o">-</span><span class="n">glance</span><span class="o">-</span><span class="n">api</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+<span class="n">Starting</span> <span class="n">openstack</span><span class="o">-</span><span class="n">glance</span><span class="o">-</span><span class="n">registry</span><span class="o">:</span> <span class="p">[</span>  <span class="n">OK</span>  <span class="p">]</span>
+</pre></div>
+
+
+<p>Without any additional arguments <code>openstack-service stop</code> will stop all OpenStack services on the current host.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>

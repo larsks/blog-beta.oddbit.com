@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://blog-beta.oddbit.com/</link><description>One of these things is not like the others</description><atom:link href="http://blog-beta.oddbit.com/tag/openvswitch/rss/index.html" rel="self"></atom:link><lastBuildDate>Tue, 27 May 2014 00:00:00 -0400</lastBuildDate><item><title>Video: Configuring OpenStack's external bridge on a single-interface system</title><link>http://blog-beta.oddbit.com/posts/2014/05/27/configuring-openstacks-externa/</link><description>&lt;p&gt;I've just put a video on Youtube that looks at the steps required to
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Odd Bits</title><link>http://blog-beta.oddbit.com/</link><description>One of these things is not like the others</description><atom:link href="http://blog-beta.oddbit.com/tag/openvswitch/rss/index.html" rel="self"></atom:link><lastBuildDate>Tue, 27 May 2014 00:00:00 -0400</lastBuildDate><item><title>Video: Configuring OpenStack's external bridge on a single-interface system</title><link>http://blog-beta.oddbit.com/2014/05/27/configuring-openstacks-externa/</link><description>&lt;p&gt;I've just put a video on Youtube that looks at the steps required to
 set up the external bridge (&lt;code&gt;br-ex&lt;/code&gt;) on a single-interface system:&lt;/p&gt;
 &lt;iframe width="560" height="315"
         src="//www.youtube.com/embed/8zFQG5mKwPk"
         frameborder="0"
-        allowfullscreen="1"&gt;&lt;/iframe&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 27 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-27:posts/2014/05/27/configuring-openstacks-externa/</guid><category>openstack</category><category>networking</category><category>openvswitch</category></item><item><title>Open vSwitch and persistent MAC addresses</title><link>http://blog-beta.oddbit.com/posts/2014/05/23/open-vswitch-and-persistent-ma/</link><description>&lt;p&gt;While normally I like to post solutions, today's post is about a
+        allowfullscreen="1"&gt;&lt;/iframe&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 27 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-27:2014/05/27/configuring-openstacks-externa/</guid><category>openstack</category><category>networking</category><category>openvswitch</category></item><item><title>Open vSwitch and persistent MAC addresses</title><link>http://blog-beta.oddbit.com/2014/05/23/open-vswitch-and-persistent-ma/</link><description>&lt;p&gt;While normally I like to post solutions, today's post is about a
 vexing problem to which I have not been able to find a solution.&lt;/p&gt;
 &lt;p&gt;This started as a simple attempt to set up external connectivity on
 an all-in-one Icehouse install deployed on an OpenStack instance.  I
@@ -86,7 +86,7 @@ unrelated switch) will cause the same behavior.&lt;/p&gt;
 &lt;p&gt;I've seen this behavior on both versions &lt;code&gt;1.11.0&lt;/code&gt; and &lt;code&gt;2.0.1&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;So far everyone I've asked about this behavior has been stumped.  If I
 am able to figure out what's going on I will update this post.  Thanks
-for reading!&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Fri, 23 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-23:posts/2014/05/23/open-vswitch-and-persistent-ma/</guid><category>openvswitch</category><category>networking</category><category>openstack</category></item><item><title>Solved: Open vSwitch and persistent MAC addresses</title><link>http://blog-beta.oddbit.com/posts/2014/05/23/solved-open-vswitch-and-persis/</link><description>&lt;p&gt;In my &lt;a href="/2014/05/23/open-vswitch-and-persistent-ma/"&gt;previous post&lt;/a&gt; I discussed a problem I was having setting a
+for reading!&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Fri, 23 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-23:2014/05/23/open-vswitch-and-persistent-ma/</guid><category>openvswitch</category><category>networking</category><category>openstack</category></item><item><title>Solved: Open vSwitch and persistent MAC addresses</title><link>http://blog-beta.oddbit.com/2014/05/23/solved-open-vswitch-and-persis/</link><description>&lt;p&gt;In my &lt;a href="/2014/05/23/open-vswitch-and-persistent-ma/"&gt;previous post&lt;/a&gt; I discussed a problem I was having setting a
 persistent MAC address on an OVS bridge device.  It looks like the
 short answer is, "don't use &lt;code&gt;ip link set ...&lt;/code&gt;" for this purpose.&lt;/p&gt;
 &lt;p&gt;You can set the bridge MAC address via &lt;code&gt;ovs-vsctl&lt;/code&gt; like this:&lt;/p&gt;
@@ -111,7 +111,7 @@ short answer is, "don't use &lt;code&gt;ip link set ...&lt;/code&gt;" for this p
 &lt;/pre&gt;&lt;/div&gt;
 
 
-&lt;p&gt;And unlike using &lt;code&gt;ip link set&lt;/code&gt;, this seems to stick.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Fri, 23 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-23:posts/2014/05/23/solved-open-vswitch-and-persis/</guid><category>openstack</category><category>openvswitch</category><category>networking</category></item><item><title>Fedora and OVS Bridge Interfaces</title><link>http://blog-beta.oddbit.com/posts/2014/05/20/fedora-and-ovs-bridge-interfac/</link><description>&lt;p&gt;I run OpenStack on my laptop, and I've been chasing down a pernicious
+&lt;p&gt;And unlike using &lt;code&gt;ip link set&lt;/code&gt;, this seems to stick.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Fri, 23 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-23:2014/05/23/solved-open-vswitch-and-persis/</guid><category>openstack</category><category>openvswitch</category><category>networking</category></item><item><title>Fedora and OVS Bridge Interfaces</title><link>http://blog-beta.oddbit.com/2014/05/20/fedora-and-ovs-bridge-interfac/</link><description>&lt;p&gt;I run OpenStack on my laptop, and I've been chasing down a pernicious
 problem with OVS bridge interfaces under both F19 and F20.  My
 OpenStack environment relies on an OVS bridge device named &lt;code&gt;br-ex&lt;/code&gt; for
 external connectivity and for making services available to OpenStack
@@ -195,7 +195,7 @@ the logic that sets &lt;code&gt;OVSBRIDGECONFIGURED&lt;/code&gt;, by changing th
 
 
 &lt;p&gt;With this change in place, &lt;code&gt;br-ex&lt;/code&gt; is correctly configured after a
-reboot.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 20 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-20:posts/2014/05/20/fedora-and-ovs-bridge-interfac/</guid><category>fedora</category><category>openstack</category><category>openvswitch</category><category>networking</category></item><item><title>Flat networks with ML2 and OpenVSwitch</title><link>http://blog-beta.oddbit.com/posts/2014/05/19/flat-networks-with-ml-and-open/</link><description>&lt;p&gt;Due to an unfortunate incident involving sleep mode and an overheated
+reboot.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Tue, 20 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-20:2014/05/20/fedora-and-ovs-bridge-interfac/</guid><category>fedora</category><category>openstack</category><category>openvswitch</category><category>networking</category></item><item><title>Flat networks with ML2 and OpenVSwitch</title><link>http://blog-beta.oddbit.com/2014/05/19/flat-networks-with-ml-and-open/</link><description>&lt;p&gt;Due to an unfortunate incident involving sleep mode and an overheated
 backpack I had the "opportunity" to rebuild my laptop.  Since this meant
 reinstalling OpenStack I used this as an excuse to finally move to the ML2
 network plugin for Neutron.&lt;/p&gt;
@@ -244,7 +244,7 @@ is running:&lt;/p&gt;
 &lt;code&gt;neutron-openvswitch-agent&lt;/code&gt; is looking explicitly at 
 &lt;code&gt;/etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini&lt;/code&gt;.  The
 physical network configuration needs to go into the
-&lt;code&gt;ovs_neutron_plugin.ini&lt;/code&gt; configuration file.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Mon, 19 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-19:posts/2014/05/19/flat-networks-with-ml-and-open/</guid><category>openvswitch</category><category>openstack</category><category>neutron</category></item><item><title>Show OVS external-ids</title><link>http://blog-beta.oddbit.com/posts/2014/01/19/show-ovs-externalids/</link><description>&lt;p&gt;This is just here as a reminder for me:&lt;/p&gt;
+&lt;code&gt;ovs_neutron_plugin.ini&lt;/code&gt; configuration file.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Mon, 19 May 2014 00:00:00 -0400</pubDate><guid>tag:blog-beta.oddbit.com,2014-05-19:2014/05/19/flat-networks-with-ml-and-open/</guid><category>openvswitch</category><category>openstack</category><category>neutron</category></item><item><title>Show OVS external-ids</title><link>http://blog-beta.oddbit.com/2014/01/19/show-ovs-externalids/</link><description>&lt;p&gt;This is just here as a reminder for me:&lt;/p&gt;
 &lt;p&gt;An OVS interface has a variety of attributes associated with it, including an
 &lt;code&gt;external-id&lt;/code&gt; field that can be used to associate resources outside of
 OpenVSwitch with the interface.  You can view this field with the following
@@ -296,4 +296,4 @@ command:&lt;/p&gt;
 &lt;span class="p"&gt;.&lt;/span&gt;
 &lt;span class="p"&gt;.&lt;/span&gt;
 &lt;span class="p"&gt;.&lt;/span&gt;
-&lt;/pre&gt;&lt;/div&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 19 Jan 2014 00:00:00 -0500</pubDate><guid>tag:blog-beta.oddbit.com,2014-01-19:posts/2014/01/19/show-ovs-externalids/</guid><category>openstack</category><category>openvswitch</category></item></channel></rss>
+&lt;/pre&gt;&lt;/div&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Lars Kellogg-Stedman</dc:creator><pubDate>Sun, 19 Jan 2014 00:00:00 -0500</pubDate><guid>tag:blog-beta.oddbit.com,2014-01-19:2014/01/19/show-ovs-externalids/</guid><category>openstack</category><category>openvswitch</category></item></channel></rss>

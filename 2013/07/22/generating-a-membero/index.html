@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+		<title>Odd Bits &mdash; Generating a memberOf attribute for posixGroups</title>
+		<meta charset="utf-8" />
+		<link rel="profile" href="http://gmpg.org/xfn/11" />
+		<link rel="stylesheet" type="text/css" href="http://blog-beta.oddbit.com/theme/css/style.css" />
+		<link rel='stylesheet' id='oswald-css'  href='http://fonts.googleapis.com/css?family=Oswald&#038;ver=3.3.2' type='text/css' media='all' />
+		<style type="text/css">
+			body.custom-background { background-color: #f5f5f5; }
+		</style>
+		<link rel="alternate" type="application/atom+xml"
+			title="Odd Bits — Flux Atom"
+			href="http://blog-beta.oddbit.com/" /> 
+		<!--[if lte IE 8]><script src="http://blog-beta.oddbit.com/theme/js/html5shiv.js"></script><![endif]-->
+</head>
+
+<body class="home blog custom-background " >
+	<div id="container">
+		<div id="header">
+				<h1 id="site-title"><a href="http://blog-beta.oddbit.com">Odd Bits</a></h1>
+<h2 id="site-description">One of these things is not like the others</h2>		</div><!-- /#banner -->
+		
+		<div id="menu">
+			<div class="menu-navigation-container">
+				<ul id="menu-navigation" class="menu">
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="/archives.html">archive</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://twitter.com/larsks">larsks@twitter</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="http://github.com/larsks">larsks@github</a></li>
+						<li  class="active" class="menu-item menu-item-type-post_type menu-item-object-page"><a href="https://webchat.freenode.net/">larsks@freenode</a></li>
+
+				</ul>
+			</div> <!--/#menu-navigation-container-->
+		</div><!-- /#menu -->
+		
+		<div class="page-title">
+		</div>
+	
+		<div id="contents">
+
+<div class="post type-post status-publish format-standard hentry category-general" id="post">
+	<div class="entry-meta">
+		<div class="date"><a href="http://blog-beta.oddbit.com/2013/07/22/generating-a-membero/">Mon 22 July 2013</a></div>
+		<span class="byline">By <a href="http://blog-beta.oddbit.com/author/lars-kellogg-stedman.html">Lars Kellogg-Stedman</a></span>
+    		<span class="tag-links"><strong>Tagged</strong>
+ <a href="http://blog-beta.oddbit.com/tag/ldap/index.html" rel="tag">ldap</a>    		</span>
+	</div> <!-- /#entry-meta -->
+	<div class="main">
+		<h2 class="entry-title">
+			<a href="http://blog-beta.oddbit.com/2013/07/22/generating-a-membero/" title="Permalink to Generating a memberOf attribute for posixGroups" rel="bookmark">Generating a memberOf attribute for posixGroups</a>
+		</h2>
+		<div class="entry-content">
+			<p>This showed up on <a href="https://wiki.openstack.org/wiki/IRC">#openstack</a> earlier today:</p>
+<div class="highlight"><pre><span class="mi">2013</span><span class="o">-</span><span class="mi">07</span><span class="o">-</span><span class="mi">22</span><span class="nx">T13</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">10</span>  <span class="o">&lt;</span><span class="nx">m0zes</span><span class="o">&gt;</span> <span class="nx">hello</span><span class="p">,</span> <span class="kc">all</span><span class="nx">.</span> <span class="nx">I</span> <span class="nb">am</span> <span class="nx">looking</span> <span class="k">to</span>
+<span class="nx">setup</span> <span class="nx">keystone</span> <span class="k">with</span> <span class="nx">an</span> <span class="nb">ldap</span> <span class="nx">backend.</span> <span class="nx">I</span> <span class="nx">need</span> <span class="k">to</span> <span class="nx">filter</span>
+<span class="nx">users</span> <span class="nx">based</span> <span class="k">on</span> <span class="k">group</span> <span class="nx">membership</span><span class="p">,</span> <span class="k">in</span> <span class="nx">this</span> <span class="k">case</span> <span class="nx">a</span>
+<span class="nx">non</span><span class="na">-rfc2307</span> <span class="nx">posixGroup.</span> <span class="nx">This</span> <span class="nx">means</span> <span class="nx">that</span> <span class="nx">memberOf</span> <span class="nx">doesn</span><span class="s1">&#39;t</span>
+<span class="s1">show up, and that the memberUid in the group is not a</span>
+<span class="s1">dn. any thoughts on how to accomplish this?</span>
+</pre></div>
+
+
+<p>It turns out that this is a not uncommon question, so I spent some
+time today working out a solution using the <a href="http://www.openldap.org/faq/data/cache/1209.html">dynlist</a> overlay for
+<a href="http://www.openldap.org/">OpenLDAP</a>.</p>
+<!-- more -->
+
+<p>The LDIF data presented in this article can be found <a href="https://github.com/larsks/blog-openldap-dynlist">on github</a>.</p>
+<h2>Assumptions</h2>
+<p>I'm assuming that you have a traditional <code>posixGroup</code> that looks
+something like this:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">lars</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">posixGroup</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">lars</span>
+<span class="n">gidNumber</span><span class="o">:</span> <span class="mi">1000</span>
+<span class="n">memberUid</span><span class="o">:</span> <span class="n">lars</span>
+</pre></div>
+
+
+<p>That is, members are recorded in the <code>memberUid</code> attribute which
+corresponds to the <code>uidNumber</code> attribute of a user object.</p>
+<h2>Loading the dynlist module</h2>
+<p>This solution makes use of the <code>dynlist</code> dynamic overlay, so you'll
+first need to make sure that module is loaded.  Most modern OpenLDAP
+deployments make use of the new <code>slapd.d</code> configuration directory,
+which means you'll modify your configuration by loading the following
+LDIF file:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">modules</span><span class="o">,</span><span class="n">cn</span><span class="o">=</span><span class="n">config</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">olcModuleList</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">modules</span>
+<span class="n">olcModuleLoad</span><span class="o">:</span> <span class="n">dynlist</span>
+</pre></div>
+
+
+<p>You would load this into your running instance with something like the
+following:</p>
+<div class="highlight"><pre><span class="c"># ldapadd -Y EXTERNAL -H ldapi://%2fvar%2frun%2fldapi -f dynlist.ldif</span>
+</pre></div>
+
+
+<p>This makes certain assumptions about how your permissions are
+configured (in particular, it assumes that your server is configured
+to permit administrative access to system UID 0 when accessing the
+<code>ldapi</code> socket).</p>
+<p>If you already have a <code>cn=modules{0},cn=config</code> object, you'll need to
+modify instead using the following:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">modules</span><span class="o">,</span><span class="n">cn</span><span class="o">=</span><span class="n">config</span>
+<span class="n">changetype</span><span class="o">:</span> <span class="n">modify</span>
+<span class="n">add</span><span class="o">:</span> <span class="n">olcModuleLoad</span>
+<span class="n">olcModuleLoad</span><span class="o">:</span> <span class="n">dynlist</span>
+</pre></div>
+
+
+<p>And use <code>ldapmodify</code>:</p>
+<div class="highlight"><pre><span class="c"># ldapmodify -Y EXTERNAL -H ldapi://%2fvar%2frun%2fldapi -f dynlist.ldif</span>
+</pre></div>
+
+
+<h2>Schema modifications</h2>
+<p>In an ideal world, we would be able to make our solution populate the
+standard <code>memberOf</code> attribute.  Unfortunately, this is an
+"operational" attribute in OpenLDAP, which means we can't make it
+available to a user class...so, we're going to define (a) a new
+<code>attributeType</code> that is largely identical to the <code>memberOf</code> attribute,
+and (b) a new auxiliary object class that allows the new attribute.</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">cn</span><span class="o">=</span><span class="n">schema</span><span class="o">,</span><span class="n">cn</span><span class="o">=</span><span class="n">config</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">olcSchemaConfig</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">oddbit</span>
+<span class="n">olcAttributeTypes</span><span class="o">:</span> <span class="o">(</span> <span class="mf">1.3</span><span class="o">.</span><span class="mf">6.1</span><span class="o">.</span><span class="mf">4.1</span><span class="o">.</span><span class="mf">24441.1</span><span class="o">.</span><span class="mf">1.1</span> 
+ <span class="n">NAME</span> <span class="s1">&#39;obMemberOf&#39;</span> 
+ <span class="n">DESC</span> <span class="s1">&#39;Distinguished name of a group of which the object is a member&#39;</span> 
+ <span class="n">EQUALITY</span> <span class="n">distinguishedNameMatch</span> 
+ <span class="n">SYNTAX</span> <span class="mf">1.3</span><span class="o">.</span><span class="mf">6.1</span><span class="o">.</span><span class="mf">4.1</span><span class="o">.</span><span class="mf">1466.115</span><span class="o">.</span><span class="mf">121.1</span><span class="o">.</span><span class="mi">12</span> <span class="o">)</span>
+<span class="n">olcObjectClasses</span><span class="o">:</span> <span class="o">(</span> <span class="mf">1.3</span><span class="o">.</span><span class="mf">6.1</span><span class="o">.</span><span class="mf">4.1</span><span class="o">.</span><span class="mf">24441.2</span><span class="o">.</span><span class="mf">1.1</span> 
+ <span class="n">NAME</span> <span class="s1">&#39;obPerson&#39;</span> <span class="n">DESC</span> <span class="s1">&#39;oddbit.com person&#39;</span> 
+ <span class="n">AUXILIARY</span> <span class="n">MAY</span> <span class="o">(</span> <span class="n">obMemberOf</span> <span class="o">)</span> <span class="o">)</span>
+</pre></div>
+
+
+<p>This gives us the <code>obMemberOf</code> attribute and the <code>obPerson</code> object
+class.  <strong>NOTE</strong>: the OIDs I'm using here are using my own
+IANA-assigned OID prefix.  You should replace <code>1.3.6.1.4.1.24441</code> with
+your own OID prefix.  If you don't have one (and you're sure your
+organization doesn't already have one), you can <a href="http://pen.iana.org/pen/PenApplication.page">register</a> for your
+own.</p>
+<h2>Defining a dynamic list</h2>
+<p>We're going to configure the <code>dynlist</code> overlay so that when it sees an
+<code>obPerson</code> object, it will use the <code>labeledURI</code> attribute of that
+object to generate a list of <code>obMemberOf</code> attributes containing the
+distinguished names of the groups of which the user is a member.
+We'll load the following LDIF file into our server:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">olcOverlay</span><span class="o">=</span><span class="n">dynlist</span><span class="o">,</span><span class="n">olcDatabase</span><span class="o">={</span><span class="mi">2</span><span class="o">}</span><span class="n">hdb</span><span class="o">,</span><span class="n">cn</span><span class="o">=</span><span class="n">config</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">olcOverlayConfig</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">olcDynamicList</span>
+<span class="n">olcOverlay</span><span class="o">:</span> <span class="n">dynlist</span>
+<span class="n">olcDlAttrSet</span><span class="o">:</span> <span class="n">obPerson</span> <span class="n">labeledURI</span> <span class="n">obMemberOf</span>
+</pre></div>
+
+
+<p>Note that the distinguished name for this entry depends on the DN of
+the database which you are configuring, so you'll need to modify the
+<code>olcDatabase=</code> component in the DN.</p>
+<h2>Setting user attributes</h2>
+<p>With the above configuration in place, we can now add the necessary
+<code>labeledURI</code> attribute to a user and see what happens.  For our
+purposes, this attribute needs to contain an LDAP URI that returns the
+groups of which the user is a member.  Assuming a user like this:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">posixAccount</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">inetOrgPerson</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">sn</span><span class="o">:</span> <span class="n">testuser</span>
+<span class="n">uid</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">uidNumber</span><span class="o">:</span> <span class="mi">1001</span>
+<span class="n">gidNumber</span><span class="o">:</span> <span class="mi">1001</span>
+<span class="n">homeDirectory</span><span class="o">:</span> <span class="sr">/home/</span><span class="n">user1</span>
+</pre></div>
+
+
+<p>We'll need to add the following:</p>
+<div class="highlight"><pre><span class="n">labeledURI</span><span class="o">:</span> <span class="n">ldap</span><span class="o">:///</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span><span class="o">??</span><span class="n">sub</span><span class="o">?(&amp;(</span>
+ <span class="n">objectclass</span><span class="o">=</span><span class="n">posixgroup</span><span class="o">)(</span><span class="n">memberuid</span><span class="o">=</span><span class="n">user1</span><span class="o">))</span>
+</pre></div>
+
+
+<p>You could do this with the following LDIF file and <code>ldapmodify</code>:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">changetype</span><span class="o">:</span> <span class="n">modify</span>
+<span class="n">add</span><span class="o">:</span> <span class="n">labeledURI</span>
+<span class="n">labeledURI</span><span class="o">:</span> <span class="n">ldap</span><span class="o">:///</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span><span class="o">??</span><span class="n">sub</span><span class="o">?(&amp;(</span>
+ <span class="n">objectclass</span><span class="o">=</span><span class="n">posixgroup</span><span class="o">)(</span><span class="n">memberuid</span><span class="o">=</span><span class="n">user1</span><span class="o">))</span>
+</pre></div>
+
+
+<h2>Testing things out</h2>
+<p>Assuming we have the following groups:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">posixGroup</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">gidNumber</span><span class="o">:</span> <span class="mi">1001</span>
+<span class="n">memberUid</span><span class="o">:</span> <span class="n">lars</span>
+<span class="n">memberUid</span><span class="o">:</span> <span class="n">user1</span>
+
+<span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">staff</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">posixGroup</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">staff</span>
+<span class="n">gidNumber</span><span class="o">:</span> <span class="mi">2000</span>
+<span class="n">memberUid</span><span class="o">:</span> <span class="n">user1</span>
+</pre></div>
+
+
+<p>If we look up the <code>user1</code> user:</p>
+<div class="highlight"><pre><span class="cp"># ldapsearch -Y EXTERNAL -H ldapi:</span><span class="c1">//%2fvar%2frun%2fldapi -b \</span>
+  <span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span>
+</pre></div>
+
+
+<p>We should see <code>obMemberOf</code> attributes in the result:</p>
+<div class="highlight"><pre><span class="n">dn</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">people</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">cn</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">sn</span><span class="o">:</span> <span class="n">testuser</span>
+<span class="n">uid</span><span class="o">:</span> <span class="n">user1</span>
+<span class="n">uidNumber</span><span class="o">:</span> <span class="mi">1001</span>
+<span class="n">gidNumber</span><span class="o">:</span> <span class="mi">1001</span>
+<span class="n">homeDirectory</span><span class="o">:</span> <span class="sr">/home/</span><span class="n">user1</span>
+<span class="n">labeledURI</span><span class="o">:</span> <span class="n">ldap</span><span class="o">:///</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span><span class="o">??</span><span class="n">sub</span><span class="o">?(&amp;(</span><span class="n">objectclass</span><span class="o">=</span><span class="n">posixgroup</span><span class="o">)</span>
+ <span class="o">(</span><span class="n">memberuid</span><span class="o">=</span><span class="n">user1</span><span class="o">))</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">inetOrgPerson</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">oddPerson</span>
+<span class="n">objectClass</span><span class="o">:</span> <span class="n">posixAccount</span>
+<span class="n">obmemberof</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">user1</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+<span class="n">obmemberof</span><span class="o">:</span> <span class="n">cn</span><span class="o">=</span><span class="n">staff</span><span class="o">,</span><span class="n">ou</span><span class="o">=</span><span class="n">groups</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">oddbit</span><span class="o">,</span><span class="n">dc</span><span class="o">=</span><span class="n">com</span>
+</pre></div>
+
+
+<h2>Caveats</h2>
+<p>Note that this solution requires searching through all of your group
+entries every time you look up a user object.  Given a sufficiently
+large directory this may not be an optimal solution.</p>
+		</div> <!--/#entry-content-->
+	</div> <!--/#main-->
+</div>  <!--/#post-->
+
+		</div>
+		
+		<div id="footer">
+			<p>Powered by <a href="http://getpelican.com">Pelican</a>, theme by <a href="http://bunnyman.info">tBunnyMan</a>.</p>
+		</div><!-- /#footer -->
+	</div><!-- /#container -->
+	<div style="display:none"></div>
+</body>
+</html>
